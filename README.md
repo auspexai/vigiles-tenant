@@ -26,13 +26,16 @@ Until the Approver pool seats with floor of 2 external members, Sentinel approva
 
 [Apache-2.0](LICENSE) — matching the upstream Sentinel research code license. Per the AuspexAI Tenant SDK boundary design, tenant license is the Researcher's choice; this tenant uses Apache-2.0 to remain aligned with the upstream science and to demonstrate that the AGPL-3.0 platform genuinely supports non-AGPL tenants.
 
-## Contributing
+## Upstream research
 
-See [`CONTRIBUTING.md`](https://github.com/auspexai/.github/blob/main/CONTRIBUTING.md) (org-wide). For the Sentinel research science itself — datasets, experimental design, statistical methods — see the upstream repositories. This repository is for the AuspexAI-tenant packaging and integration only.
+For the Sentinel research science itself — datasets, experimental design, statistical methods, findings — see the [upstream repositories](https://github.com/jasongagne-git?tab=repositories&q=sentinel). This repository is for the AuspexAI-tenant packaging and integration layer only.
 
-## Governance
+## Governance & policies
 
-Project direction is held by the Maintainer team per [`GOVERNANCE.md`](https://github.com/auspexai/.github/blob/main/GOVERNANCE.md). Tenant approval and revocation authority rests with the Approver pool. Code of Conduct: [`CODE_OF_CONDUCT.md`](https://github.com/auspexai/.github/blob/main/CODE_OF_CONDUCT.md).
+- [Governance](https://github.com/auspexai/.github/blob/main/GOVERNANCE.md) — roles, decision rules, recruitment, conflict of interest
+- [Code of Conduct](https://github.com/auspexai/.github/blob/main/CODE_OF_CONDUCT.md) — community standards, reporting, escalation pathway
+- [Contributing](https://github.com/auspexai/.github/blob/main/CONTRIBUTING.md) — DCO sign-off, PR workflow, RFC requirement for substantial architectural changes
+- [Research Ethics Policy](https://github.com/auspexai/.github/blob/main/RESEARCH_ETHICS_POLICY.md) — what AI safety research can run on the network and how it's reviewed (Sentinel is the worked example in §7)
 
 ## Watch this repo
 
