@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+      - run: uv python install ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: uv pip install --system --python ${{ matrix.python-version }} -e ".[dev]"
+      - name: Lint (ruff check)
+        run: ruff check .
+      - name: Format (ruff format --check)
+        run: ruff format --check .
+      - name: Build + validate the manifest
+        run: python build.py
+      - name: Tests
+        run: pytest -q

@@ -1,0 +1,23 @@
+[project]
+name = "vigiles-tenant"
+version = "0.1.0"
+description = "Vigiles — AuspexAI's first research tenant (behavioral drift)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+
+# The tenant package itself (pkg/executor.py) vendors lite.py and has ZERO
+# runtime deps — it runs under the worker sandbox's system Python. These deps
+# are for AUTHORING + TESTS only (the SDK driver + harness contracts).
+[project.optional-dependencies]
+dev = [
+    "auspexai-tenant @ git+https://github.com/auspexai/tenant-sdk.git",
+    "pytest>=8",
+    "ruff>=0.6",
+]
+
+[tool.ruff]
+line-length = 100
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

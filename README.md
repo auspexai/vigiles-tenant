@@ -6,13 +6,36 @@ Vigiles is a sibling project to [Sentinel](https://github.com/jasongagne-git/sen
 
 ## Status
 
-**Not yet started.** Vigiles is sequenced last in Phase 1 (per [Principles & Scope §5.3](https://github.com/auspexai/platform)) so the platform interfaces prove themselves against the synthetic test tenant before bending toward a real tenant's needs. The first experiment will be **D6** — a week-long continuous multi-agent drift run.
+**D6 package built (2026-06-09); awaiting the first live run.** Vigiles is sequenced last in Phase 1 (per [Principles & Scope §5.3](https://github.com/auspexai/platform)) so the platform interfaces prove themselves against the synthetic test tenant before bending toward a real tenant's needs. The first experiment is **D6** — a deterministic behavioral-drift probe run against a worker-served local LLM. The minimal package + adaptive driver are in this repo; the live run needs a worker with inference serving enabled (`[inference] backend = "ollama"`) holding the declared model.
+
+## Layout
+
+- **`pkg/`** — the tenant package staged on the worker. `executor.py` runs one drift probe per work unit against the worker-served model through the AuspexAI inference broker (W-S, §9 #43) and reduces the response to a sha256 anchor + light lexical features (no raw text — Research Ethics §7 containment). It imports only the vendored `lite.py` (the SDK's stdlib-only `LiteHarness` + `InferenceClient`), so it runs under the worker sandbox's system Python with zero installs.
+- **`driver/drift_driver.py`** — the adaptive `run_until` driver. Re-runs a fixed probe panel each round at temperature 0 with a pinned seed and folds the per-probe consensus hashes into a `Counter`; converges once every probe's consensus response holds stable across consecutive rounds (a changed hash for a fixed probe+seed is the drift signal).
+- **`build.py`** — builds + validates the manifest and computes `executor.package_sha256` over the package files. `VIGILES_MODEL_ID=<store-id>` selects the served model.
+- **`tests/`** — offline executor (vs a fake broker) + driver-convergence tests; no live coordinator or model.
+
+### Running D6
+
+```sh
+# 1. build + sign the manifest
+python build.py
+auspexai-tenant manifest sign pkg/manifest.json --key <vigiles_key> -o pkg/manifest.json.sig
+# 2. operator stages pkg/ on a serving worker + submits + approves (TRUSTED, repl 1)
+# 3. drive it
+auspexai-tenant experiment run <coordinator-experiment-id> \
+    --driver drift_driver:build \
+    --coordinator https://coord.auspexai.network --key <vigiles_key> \
+    --journal vigiles-d6.journal --doorbell
+```
+
+Determinism is consensus-critical: the worker's inference broker pins `temperature=0` + the seed and authorizes only the manifest's exact model id, so replicas of a unit produce byte-identical payloads (the hash-agreement precondition). The manifest declares the model with `local_weights_required`, which routes units only to workers that hold + serve it.
 
 ## Scope
 
-This repository will hold:
+This repository holds:
 
-- The Vigiles tenant package — executor and reducer consuming the AuspexAI [Tenant SDK](https://github.com/auspexai/tenant-sdk)
+- The Vigiles tenant package — executor and driver consuming the AuspexAI [Tenant SDK](https://github.com/auspexai/tenant-sdk)
 - Experiment manifests and result schemas for behavioral drift research
 - Containment plan implementations per the [Research Ethics Policy](https://github.com/auspexai/.github/blob/main/RESEARCH_ETHICS_POLICY.md) §7
 
