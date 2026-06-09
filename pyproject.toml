@@ -3,7 +3,10 @@ name = "vigiles-tenant"
 version = "0.1.0"
 description = "Vigiles — AuspexAI's first research tenant (behavioral drift)"
 readme = "README.md"
-requires-python = ">=3.10"
+# This bounds the AUTHORING/TEST env (it installs the SDK, which needs 3.11).
+# The STAGED package — pkg/executor.py + the vendored lite.py — stays
+# stdlib-only and 3.10-safe so it runs under a worker's system Python.
+requires-python = ">=3.11"
 license = { text = "Apache-2.0" }
 
 # The tenant package itself (pkg/executor.py) vendors lite.py and has ZERO
