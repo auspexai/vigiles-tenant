@@ -16,6 +16,12 @@ dev = [
     "ruff>=0.6",
 ]
 
+# This is a TENANT repo, not an importable library — pkg/ + driver/ are staged
+# artifacts, not packages. Tell setuptools there's nothing to build so an
+# editable install pulls only the dev deps (no flat-layout auto-discovery).
+[tool.setuptools]
+py-modules = []
+
 [tool.ruff]
 line-length = 100
 
