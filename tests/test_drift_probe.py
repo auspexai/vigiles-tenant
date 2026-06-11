@@ -135,36 +135,95 @@ def _consensus(probe_id: str, digest: str) -> dict:
     return {"payload": {"probe_id": probe_id, "response_sha256": digest}}
 
 
+STABLE_PANEL = [
+    ("p-greeting", "a" * 64),
+    ("p-refusal", "b" * 64),
+    ("p-instruction", "c" * 64),
+]
+
+
 def test_driver_converges_on_hash_stability():
+    """run_until calls `condition` after EVERY drain — mid-round included
+    (driver.py poll loop), not once per round. Convergence must land only at
+    the round boundary after STABLE_ROUNDS stable completed rounds: baseline
+    round 0, stable rounds 1-3 → converged at the end of round 3."""
     spec = drift_driver.build()
     cond = spec.condition
     agg = Counter(bucket=drift_driver._bucket)
 
-    stable = [("p-greeting", "a" * 64), ("p-refusal", "b" * 64), ("p-instruction", "c" * 64)]
-
-    # The real driver calls `condition` once per round after folding that round's
-    # results. Round 0 establishes the baseline (streak 0); rounds 1-2 build the
-    # streak; round 3 reaches STABLE_ROUNDS → converged.
-    results = []
+    boundary_verdicts = []
     for _round in range(4):
-        for p, h in stable:
+        for p, h in STABLE_PANEL:
             agg.fold(_consensus(p, h))
-        results.append(cond(agg))
-    assert results == [False, False, False, True]
+            mid = cond(agg)  # the real per-drain call pattern
+            if sum(agg.counts.values()) % len(drift_driver.PROBES) != 0:
+                assert mid is False, "verdict on a partial round"
+        boundary_verdicts.append(cond(agg))
+    assert boundary_verdicts == [False, False, False, True]
+
+
+def test_driver_never_converges_mid_round_on_no_progress_polls():
+    """D6 regression (2026-06-10): the run finalized with r4-p-refusal-r1 still
+    pending — repeated no-progress polls ticked the streak inside one round.
+    With a partial round folded, any number of condition calls must stay False."""
+    spec = drift_driver.build()
+    cond = spec.condition
+    agg = Counter(bucket=drift_driver._bucket)
+
+    # Round 0 completes (baseline)...
+    for p, h in STABLE_PANEL:
+        agg.fold(_consensus(p, h))
+    assert cond(agg) is False
+    # ...round 1 folds only 2 of 3 probes, then the driver polls in a loop.
+    for p, h in STABLE_PANEL[:2]:
+        agg.fold(_consensus(p, h))
+    for _poll in range(drift_driver.STABLE_ROUNDS * 5):
+        assert cond(agg) is False, "streak ticked on a no-progress poll"
+    # Completing rounds 1-3 with no new bucket converges exactly on schedule.
+    agg.fold(_consensus(*STABLE_PANEL[2]))
+    assert cond(agg) is False  # round 1: streak 1
+    for _round in (2, 3):
+        for p, h in STABLE_PANEL:
+            agg.fold(_consensus(p, h))
+        verdict = cond(agg)
+    assert verdict is True
+
+
+def test_driver_holds_verdict_when_repolled_at_same_boundary():
+    """A completed-round boundary judged twice (poll with no new folds) must
+    hold its verdict without advancing the streak."""
+    spec = drift_driver.build()
+    cond = spec.condition
+    agg = Counter(bucket=drift_driver._bucket)
+    for p, h in STABLE_PANEL:
+        agg.fold(_consensus(p, h))
+    # Baseline round judged repeatedly: streak must stay 0, never converge.
+    for _ in range(drift_driver.STABLE_ROUNDS * 5):
+        assert cond(agg) is False
 
 
 def test_driver_resets_streak_on_drift():
     spec = drift_driver.build()
     cond = spec.condition
     agg = Counter(bucket=drift_driver._bucket)
-    base = [("p-greeting", "a" * 64), ("p-refusal", "b" * 64)]
-    for _ in range(3):
-        for p, h in base:
+    for _ in range(1 + drift_driver.STABLE_ROUNDS - 1):  # baseline + 2 stable rounds
+        for p, h in STABLE_PANEL:
             agg.fold(_consensus(p, h))
-        cond(agg)
-    # A drifted response for one probe introduces a NEW bucket → streak resets.
+        assert cond(agg) is False
+    # Next round: one probe DRIFTS (new bucket) → streak resets at the boundary...
     agg.fold(_consensus("p-greeting", "f" * 64))
+    for p, h in STABLE_PANEL[1:]:
+        agg.fold(_consensus(p, h))
     assert cond(agg) is False
+    # ...so stability must be re-earned over STABLE_ROUNDS full rounds. The
+    # drifted hash is now part of the stable panel (4 buckets, no growth).
+    drifted = [("p-greeting", "f" * 64), *STABLE_PANEL[1:]]
+    verdicts = []
+    for _ in range(drift_driver.STABLE_ROUNDS):
+        for p, h in drifted:
+            agg.fold(_consensus(p, h))
+        verdicts.append(cond(agg))
+    assert verdicts == [False, False, True]
 
 
 def test_next_batch_reruns_full_panel_with_fixed_seed():

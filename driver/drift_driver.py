@@ -88,19 +88,36 @@ def _next_batch(_agg: Counter, rnd: int) -> list[Unit]:
 
 def _make_condition():
     """Converged once the set of distinct (probe, hash) buckets has not grown
-    for STABLE_ROUNDS consecutive rounds — every probe's consensus response has
-    held stable. Closes over the last-seen bucket count + a stable-streak."""
-    state = {"last_distinct": -1, "streak": 0}
+    for STABLE_ROUNDS consecutive COMPLETED ROUNDS — every probe's consensus
+    response has held stable.
+
+    Round-boundary gating (D6 finding, 2026-06-10): `run_until` invokes
+    `condition` after EVERY poll drain — including mid-round with only part of
+    the panel folded, and on no-progress polls. A streak that ticks per
+    invocation therefore converges early (D6 finalized with r4-p-refusal-r1
+    still pending). The aggregate is the only input, so the round boundary is
+    derived from the fold count: each round folds exactly one consensus result
+    per probe, so `total // len(PROBES)` is the number of completed rounds and
+    `total % len(PROBES) != 0` means mid-round — never judge there. The streak
+    advances at most once per newly completed round.
+    """
+    state = {"judged_rounds": 0, "last_distinct": -1, "streak": 0}
 
     def converged(agg: Counter) -> bool:
+        total = sum(agg.counts.values())
+        rounds_done, mid_round = divmod(total, len(PROBES))
+        if rounds_done == 0 or mid_round:
+            return False  # nothing or a partial round folded — no verdict
+        if rounds_done == state["judged_rounds"]:
+            # Same boundary as the last judgment (e.g. a no-progress poll):
+            # hold the verdict, never re-tick the streak.
+            return state["streak"] >= STABLE_ROUNDS
+        state["judged_rounds"] = rounds_done
         distinct = len(agg.counts)
-        # Need at least one full round folded before judging.
-        if distinct == 0:
-            return False
         if distinct == state["last_distinct"]:
             state["streak"] += 1
         else:
-            state["streak"] = 0
+            state["streak"] = 0  # new (probe, hash) bucket appeared — drift
             state["last_distinct"] = distinct
         return state["streak"] >= STABLE_ROUNDS
 
