@@ -170,5 +170,7 @@ def test_driver_resets_streak_on_drift():
 def test_next_batch_reruns_full_panel_with_fixed_seed():
     units = drift_driver._next_batch(Counter(), 4)
     assert len(units) == len(drift_driver.PROBES)
-    assert {u.unit_id for u in units} == {f"{p['probe_id']}-r4" for p in drift_driver.PROBES}
+    assert {u.unit_id for u in units} == {
+        f"{drift_driver.UNIT_PREFIX}-{p['probe_id']}-r4" for p in drift_driver.PROBES
+    }
     assert all(u.payload["seed"] == drift_driver.SEED for u in units)

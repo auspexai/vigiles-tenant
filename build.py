@@ -24,7 +24,9 @@ from auspexai_tenant.manifest import Manifest, compute_package_digest
 HERE = Path(__file__).parent
 PKG = HERE / "pkg"  # executor.py + lite.py (both digested into package_sha256)
 TENANT_ID = "vigiles"
-LABEL = "vigiles-d6-drift"
+# Per-tenant experiment labels are unique FOREVER (aborted runs keep theirs) —
+# override for re-runs: VIGILES_LABEL=vigiles-d6-drift-r2 python build.py
+LABEL = os.environ.get("VIGILES_LABEL", "vigiles-d6-drift")
 # Default to a small instruct GGUF that fits an 8GB Jetson; override to match
 # the worker's served store id exactly (the #30 routing key).
 MODEL_ID = os.environ.get("VIGILES_MODEL_ID", "gemma-3-1b-it-q4")

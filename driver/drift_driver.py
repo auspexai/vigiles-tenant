@@ -25,6 +25,7 @@ no work units — the driver supplies them):
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from auspexai_tenant import Counter, DriverSpec, Unit
@@ -59,13 +60,21 @@ def _bucket(result: dict[str, Any]) -> str:
     return f"{p['probe_id']}::{p['response_sha256'][:12]}"
 
 
+# Run-unique unit-id prefix. Unit ids MUST NOT collide across experiments:
+# the worker's local bookkeeping keys by unit_id (worker bug, tracked), so a
+# resubmitted run reusing ids can get its results misattributed to a prior
+# experiment's assignments. Until the worker fix lands, every run sets its own
+# prefix (e.g. VIGILES_UNIT_PREFIX=r4 → "r4-p-greeting-r0").
+UNIT_PREFIX = os.environ.get("VIGILES_UNIT_PREFIX", "d6")
+
+
 def _next_batch(_agg: Counter, rnd: int) -> list[Unit]:
     """Re-run the full probe panel each round. The unit_id carries the round so
     each round's probes are distinct work (the seed stays fixed — that's the
     point: same input, watching for output drift)."""
     return [
         Unit(
-            f"{p['probe_id']}-r{rnd}",
+            f"{UNIT_PREFIX}-{p['probe_id']}-r{rnd}",
             {
                 "probe_id": p["probe_id"],
                 "messages": p["messages"],
