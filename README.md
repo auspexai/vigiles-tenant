@@ -35,6 +35,29 @@ auspexai-tenant experiment run <coordinator-experiment-id> \
 
 Determinism is consensus-critical: the worker's inference broker pins `temperature=0` + the seed and authorizes only the manifest's exact model id, so replicas of a unit produce byte-identical payloads (the hash-agreement precondition). The manifest declares the model with `local_weights_required`, which routes units only to workers that hold + serve it.
 
+#### Long-horizon runs
+
+By default the driver is the D6 proof loop: it stops at first stability (`STABLE_ROUNDS` rounds with no new `(probe, hash)` pair) or at 50 rounds. A real longitudinal study keeps observing *past* stability to catch drift. Three env knobs parameterize the same driver — all default to D6 behavior when unset:
+
+| Knob | Effect |
+| --- | --- |
+| `VIGILES_RUN_SECONDS` | `> 0` → duration mode: keep issuing rounds until this much wall-clock has elapsed; do **not** stop at stability. A new `(probe, hash)` pair after stability is a **drift event**, logged loudly on the `vigiles.drift` logger. |
+| `VIGILES_ROUND_INTERVAL_SECONDS` | Cadence: sleep this long between rounds (default `0` = back-to-back). |
+| `VIGILES_MAX_ROUNDS` | Overrides the 50-round client guard — raise it for duration runs. |
+
+Overnight example — ~8 h at a 5-minute cadence ≈ 96 rounds × 3 probes = 288 units (make sure the experiment's `max_units` on the coordinator covers it; it stays the hard backstop):
+
+```sh
+VIGILES_RUN_SECONDS=28800 VIGILES_ROUND_INTERVAL_SECONDS=300 VIGILES_MAX_ROUNDS=120 \
+VIGILES_UNIT_PREFIX=<run-prefix> \
+auspexai-tenant experiment run <coordinator-experiment-id> \
+    --driver drift_driver:build \
+    --coordinator https://coord.auspexai.network --key <vigiles_key> \
+    --journal vigiles-overnight.journal --doorbell
+```
+
+A duration run ends with outcome `exhausted` (the driver declines the round after the window closes — observation complete), not `converged`. The elapsed clock is `time.monotonic` from the first batch this process issues; a journal-resumed run restarts the window.
+
 ## Scope
 
 This repository holds:

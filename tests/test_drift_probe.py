@@ -10,6 +10,7 @@ stability.
 from __future__ import annotations
 
 import json
+import logging
 import socket
 import sys
 import threading
@@ -233,3 +234,159 @@ def test_next_batch_reruns_full_panel_with_fixed_seed():
         f"{drift_driver.UNIT_PREFIX}-{p['probe_id']}-r4" for p in drift_driver.PROBES
     }
     assert all(u.payload["seed"] == drift_driver.SEED for u in units)
+
+
+# ---- long-horizon knobs (VIGILES_RUN_SECONDS / _ROUND_INTERVAL_SECONDS / ----
+# ---- _MAX_ROUNDS) — offline, fake clock, no real sleeps                  ----
+
+
+class _FakeClock:
+    """Injectable monotonic clock: `now`/`sleep` patch drift_driver._now/_sleep
+    so duration + cadence logic runs offline with zero real waiting."""
+
+    def __init__(self, start: float = 1_000.0) -> None:
+        self.t = start
+        self.sleeps: list[float] = []
+
+    def now(self) -> float:
+        return self.t
+
+    def sleep(self, seconds: float) -> None:
+        self.sleeps.append(seconds)
+        self.t += seconds
+
+    def advance(self, seconds: float) -> None:
+        self.t += seconds
+
+
+def _patch_clock(monkeypatch) -> _FakeClock:
+    clock = _FakeClock()
+    monkeypatch.setattr(drift_driver, "_now", clock.now)
+    monkeypatch.setattr(drift_driver, "_sleep", clock.sleep)
+    return clock
+
+
+def test_duration_mode_keeps_issuing_past_stability_until_elapsed(monkeypatch):
+    """VIGILES_RUN_SECONDS: a longitudinal run does NOT stop at stability — it
+    keeps issuing rounds (condition always False) and ends when next_batch
+    declines the round after the elapsed window (run_until outcome: exhausted)."""
+    clock = _patch_clock(monkeypatch)
+    monkeypatch.setenv("VIGILES_RUN_SECONDS", "100")
+    spec = drift_driver.build()
+    agg = Counter(bucket=drift_driver._bucket)
+
+    rounds = 0
+    while True:
+        units = spec.next_batch(agg, rounds)
+        if not units:
+            break
+        assert len(units) == len(drift_driver.PROBES)
+        for p, h in STABLE_PANEL:
+            agg.fold(_consensus(p, h))
+        assert spec.condition(agg) is False, "duration mode stopped at stability"
+        clock.advance(10.0)  # each round takes 10 s of fake wall-clock
+        rounds += 1
+
+    # A D6 (stability) run converges after baseline + STABLE_ROUNDS = 4 rounds;
+    # duration mode ran the clock out instead: 100 s at 10 s/round = 10 rounds.
+    assert rounds == 10
+    assert rounds > drift_driver.STABLE_ROUNDS + 1
+
+
+def test_round_interval_sleeps_between_rounds(monkeypatch):
+    """VIGILES_ROUND_INTERVAL_SECONDS: cadence sleep where the driver hands the
+    next round to the SDK loop — never before round 0, once per later round.
+    Independent of duration mode (here: plain D6 stability mode)."""
+    clock = _patch_clock(monkeypatch)
+    monkeypatch.setenv("VIGILES_ROUND_INTERVAL_SECONDS", "300")
+    spec = drift_driver.build()
+    agg = Counter(bucket=drift_driver._bucket)
+
+    assert spec.next_batch(agg, 0)
+    assert clock.sleeps == [], "slept before the first round"
+    assert spec.next_batch(agg, 1)
+    assert spec.next_batch(agg, 2)
+    assert clock.sleeps == [300.0, 300.0]
+
+
+def test_interval_sleep_crossing_deadline_does_not_issue(monkeypatch):
+    """Duration + cadence together: if the between-rounds sleep crosses the
+    elapsed deadline, the next round is NOT issued (deadline re-checked after
+    the sleep)."""
+    clock = _patch_clock(monkeypatch)
+    monkeypatch.setenv("VIGILES_RUN_SECONDS", "100")
+    monkeypatch.setenv("VIGILES_ROUND_INTERVAL_SECONDS", "60")
+    spec = drift_driver.build()
+    agg = Counter(bucket=drift_driver._bucket)
+
+    assert spec.next_batch(agg, 0)  # t0 anchored here
+    clock.advance(50.0)  # round 0 took 50 s — still inside the window
+    assert spec.next_batch(agg, 1) is None  # sleep(60) → elapsed 110 >= 100
+    assert clock.sleeps == [60.0]
+
+
+def test_duration_mode_logs_drift_event_after_stability(monkeypatch, caplog):
+    """The longitudinal payoff: streaks are still tracked in duration mode, and
+    a NEW (probe, hash) pair appearing AFTER stability is logged loudly."""
+    _patch_clock(monkeypatch)
+    monkeypatch.setenv("VIGILES_RUN_SECONDS", "999999")
+    spec = drift_driver.build()
+    cond = spec.condition
+    agg = Counter(bucket=drift_driver._bucket)
+
+    # Baseline + STABLE_ROUNDS identical rounds → stability reached, no stop.
+    for _ in range(1 + drift_driver.STABLE_ROUNDS):
+        for p, h in STABLE_PANEL:
+            agg.fold(_consensus(p, h))
+        assert cond(agg) is False
+    # One probe DRIFTS after stability → loud drift event, still no stop.
+    with caplog.at_level(logging.WARNING, logger="vigiles.drift"):
+        agg.fold(_consensus("p-greeting", "f" * 64))
+        for p, h in STABLE_PANEL[1:]:
+            agg.fold(_consensus(p, h))
+        assert cond(agg) is False
+    events = [r.getMessage() for r in caplog.records if "DRIFT EVENT" in r.getMessage()]
+    assert len(events) == 1
+    assert "p-greeting::ffffffffffff" in events[0]
+
+    # Pre-stability bucket growth (rounds 0→1 of a fresh run) is NOT an event.
+    caplog.clear()
+    spec2 = drift_driver.build()
+    agg2 = Counter(bucket=drift_driver._bucket)
+    with caplog.at_level(logging.WARNING, logger="vigiles.drift"):
+        for panel in (STABLE_PANEL, [("p-greeting", "f" * 64), *STABLE_PANEL[1:]]):
+            for p, h in panel:
+                agg2.fold(_consensus(p, h))
+            assert spec2.condition(agg2) is False
+    assert not [r for r in caplog.records if "DRIFT EVENT" in r.getMessage()]
+
+
+def test_max_rounds_env_override(monkeypatch):
+    monkeypatch.setenv("VIGILES_MAX_ROUNDS", "120")
+    assert drift_driver.build().max_rounds == 120
+
+
+def test_defaults_unchanged_when_env_unset(monkeypatch):
+    """All knobs unset → exact D6 behavior: max_rounds 50, no sleeps, no clock
+    reads, stability convergence (the suites above run under the same env)."""
+    for var in ("VIGILES_RUN_SECONDS", "VIGILES_ROUND_INTERVAL_SECONDS", "VIGILES_MAX_ROUNDS"):
+        monkeypatch.delenv(var, raising=False)
+
+    def _boom(*_a, **_k):
+        raise AssertionError("default mode must not touch the clock")
+
+    monkeypatch.setattr(drift_driver, "_sleep", _boom)
+    monkeypatch.setattr(drift_driver, "_now", _boom)
+    spec = drift_driver.build()
+    assert spec.max_rounds == drift_driver.MAX_ROUNDS == 50
+    agg = Counter(bucket=drift_driver._bucket)
+    for rnd in range(2):  # rnd > 0 exercises the (absent) cadence branch
+        units = spec.next_batch(agg, rnd)
+        assert len(units) == len(drift_driver.PROBES)
+    # Stability convergence verdict is unchanged (baseline + STABLE_ROUNDS).
+    verdicts = []
+    for _ in range(1 + drift_driver.STABLE_ROUNDS):
+        for p, h in STABLE_PANEL:
+            agg.fold(_consensus(p, h))
+        verdicts.append(spec.condition(agg))
+    assert verdicts == [False, False, False, True]

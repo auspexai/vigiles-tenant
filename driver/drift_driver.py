@@ -9,6 +9,31 @@ hash-per-probe observed for `STABLE_ROUNDS`). A real long-horizon run keeps
 going to catch drift; D6 stops at first stability (or `MAX_ROUNDS`) to prove
 the loop end-to-end.
 
+Long-horizon knobs (env; ALL default to D6 behavior when unset):
+
+  VIGILES_RUN_SECONDS            > 0 → DURATION mode: keep issuing rounds until
+                                 elapsed >= this many seconds; do NOT stop at
+                                 stability. Streaks are still tracked, and a NEW
+                                 (probe, hash) pair appearing AFTER stability is
+                                 a drift event, logged loudly (WARNING on the
+                                 "vigiles.drift" logger). The run ends with
+                                 outcome "exhausted" (the driver declines the
+                                 next batch). Elapsed is measured with
+                                 time.monotonic from the first batch issuance of
+                                 THIS process — a journal-resumed run restarts
+                                 the clock.
+  VIGILES_ROUND_INTERVAL_SECONDS sleep this long between rounds (cadence; the
+                                 default 0 issues rounds back-to-back). The
+                                 sleep happens where the driver hands the next
+                                 round to the SDK loop; in duration mode the
+                                 deadline is re-checked after the sleep so a
+                                 round is never issued past elapsed.
+  VIGILES_MAX_ROUNDS             overrides the MAX_ROUNDS client guard (default
+                                 50). RAISE this for duration runs — e.g. 8 h at
+                                 a 300 s cadence is ~96 rounds. The coordinator
+                                 experiment's max_units (rounds × panel size)
+                                 stays the hard backstop.
+
 Determinism note: replicas of one unit must agree byte-for-byte (the broker
 pins temperature 0 + seed), so within a round a probe's consensus hash is
 well-defined; ACROSS rounds, a *changed* hash for the same probe+seed is the
@@ -25,10 +50,19 @@ no work units — the driver supplies them):
 
 from __future__ import annotations
 
+import logging
 import os
+import time
+from collections.abc import Callable
 from typing import Any
 
 from auspexai_tenant import Counter, DriverSpec, Unit
+
+log = logging.getLogger("vigiles.drift")
+
+# Patchable time sources (tests inject a fake clock; no real sleeps offline).
+_now = time.monotonic
+_sleep = time.sleep
 
 # The fixed probe panel re-run every round. Kept tiny + deterministic for D6;
 # a production run loads a larger panel from the manifest's prompt set.
@@ -68,6 +102,13 @@ def _bucket(result: dict[str, Any]) -> str:
 UNIT_PREFIX = os.environ.get("VIGILES_UNIT_PREFIX", "d6")
 
 
+def _env_seconds(name: str) -> float:
+    """A non-negative seconds knob; unset/empty/<=0 → 0.0 (knob off)."""
+    raw = os.environ.get(name, "").strip()
+    value = float(raw) if raw else 0.0
+    return value if value > 0 else 0.0
+
+
 def _next_batch(_agg: Counter, rnd: int) -> list[Unit]:
     """Re-run the full probe panel each round. The unit_id carries the round so
     each round's probes are distinct work (the seed stays fixed — that's the
@@ -86,10 +127,40 @@ def _next_batch(_agg: Counter, rnd: int) -> list[Unit]:
     ]
 
 
-def _make_condition():
+def _make_next_batch(
+    run_seconds: float, interval: float
+) -> Callable[[Counter, int], list[Unit] | None]:
+    """Wrap the panel generator with the long-horizon knobs. This is where the
+    driver hands the next round to the SDK loop, so it is where the duration
+    deadline is enforced (returning None ends the run as "exhausted") and where
+    the between-rounds cadence sleep lives. With both knobs off this is exactly
+    the plain `_next_batch` (D6 default)."""
+    state: dict[str, float] = {}
+
+    def next_batch(agg: Counter, rnd: int) -> list[Unit] | None:
+        if run_seconds:
+            t0 = state.setdefault("t0", _now())  # clock starts at first issuance
+            if _now() - t0 >= run_seconds:
+                return None  # observation window over — finalize
+        if rnd > 0 and interval:
+            _sleep(interval)
+            if run_seconds and _now() - state["t0"] >= run_seconds:
+                return None  # the sleep crossed the deadline — don't issue
+        return _next_batch(agg, rnd)
+
+    return next_batch
+
+
+def _make_condition(*, duration_mode: bool = False):
     """Converged once the set of distinct (probe, hash) buckets has not grown
     for STABLE_ROUNDS consecutive COMPLETED ROUNDS — every probe's consensus
     response has held stable.
+
+    In duration mode (VIGILES_RUN_SECONDS) the verdict is ALWAYS False — a
+    longitudinal run keeps observing past stability; the duration deadline in
+    `next_batch` ends the run instead. The streak machinery still runs so that
+    a NEW (probe, hash) pair appearing after the panel had stabilized is
+    recognized and logged loudly as a drift event.
 
     Round-boundary gating (D6 finding, 2026-06-10): `run_until` invokes
     `condition` after EVERY poll drain — including mid-round with only part of
@@ -101,7 +172,13 @@ def _make_condition():
     `total % len(PROBES) != 0` means mid-round — never judge there. The streak
     advances at most once per newly completed round.
     """
-    state = {"judged_rounds": 0, "last_distinct": -1, "streak": 0}
+    state: dict[str, Any] = {
+        "judged_rounds": 0,
+        "last_distinct": -1,
+        "streak": 0,
+        "stable": False,  # stability reached and not since broken by drift
+        "known": frozenset(),  # buckets seen at the last judged boundary
+    }
 
     def converged(agg: Counter) -> bool:
         total = sum(agg.counts.values())
@@ -111,24 +188,49 @@ def _make_condition():
         if rounds_done == state["judged_rounds"]:
             # Same boundary as the last judgment (e.g. a no-progress poll):
             # hold the verdict, never re-tick the streak.
-            return state["streak"] >= STABLE_ROUNDS
+            return not duration_mode and state["streak"] >= STABLE_ROUNDS
         state["judged_rounds"] = rounds_done
         distinct = len(agg.counts)
         if distinct == state["last_distinct"]:
             state["streak"] += 1
+            if state["streak"] >= STABLE_ROUNDS and not state["stable"]:
+                state["stable"] = True
+                log.info(
+                    "panel stable at round %d: no new (probe, hash) pair for %d rounds",
+                    rounds_done,
+                    STABLE_ROUNDS,
+                )
         else:
+            new = sorted(set(agg.counts) - state["known"])
+            if state["stable"]:
+                # The longitudinal payoff: the panel had stabilized, and a
+                # fixed probe+seed just produced a response hash never seen
+                # before — behavioral drift, observed live.
+                log.warning(
+                    "DRIFT EVENT at round %d: %d new (probe, hash) pair(s) after stability: %s",
+                    rounds_done,
+                    len(new),
+                    new,
+                )
+                state["stable"] = False
             state["streak"] = 0  # new (probe, hash) bucket appeared — drift
             state["last_distinct"] = distinct
-        return state["streak"] >= STABLE_ROUNDS
+        state["known"] = frozenset(agg.counts)
+        return not duration_mode and state["streak"] >= STABLE_ROUNDS
 
     return converged
 
 
 def build() -> DriverSpec:
-    """The DriverSpec factory named on `auspexai-tenant experiment run --driver`."""
+    """The DriverSpec factory named on `auspexai-tenant experiment run --driver`.
+    Reads the long-horizon env knobs here (not at import) so each run binds its
+    own configuration; unset knobs reproduce D6 exactly."""
+    run_seconds = _env_seconds("VIGILES_RUN_SECONDS")
+    interval = _env_seconds("VIGILES_ROUND_INTERVAL_SECONDS")
+    max_rounds = int(os.environ.get("VIGILES_MAX_ROUNDS") or MAX_ROUNDS)
     return DriverSpec(
-        condition=_make_condition(),
-        next_batch=_next_batch,
+        condition=_make_condition(duration_mode=run_seconds > 0),
+        next_batch=_make_next_batch(run_seconds, interval),
         reduce=Counter(bucket=_bucket),
-        max_rounds=MAX_ROUNDS,
+        max_rounds=max_rounds,
     )
