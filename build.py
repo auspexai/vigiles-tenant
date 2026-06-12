@@ -23,7 +23,9 @@ from auspexai_tenant.manifest import Manifest, compute_package_digest
 
 HERE = Path(__file__).parent
 PKG = HERE / "pkg"  # executor.py + lite.py (both digested into package_sha256)
-TENANT_ID = "vigiles"
+TENANT_ID = os.environ.get(
+    "VIGILES_TENANT_ID", "vigiles-lab"
+)  # the onboarded tenancy (legacy hand-created "vigiles" retired 2026-06-12)
 # Per-tenant experiment labels are unique FOREVER (aborted runs keep theirs) —
 # override for re-runs: VIGILES_LABEL=vigiles-d6-drift-r2 python build.py
 LABEL = os.environ.get("VIGILES_LABEL", "vigiles-d6-drift")
