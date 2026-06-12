@@ -18,11 +18,15 @@ Vigiles is a sibling project to [Sentinel](https://github.com/jasongagne-git/sen
 ### Running D6
 
 ```sh
-# 1. build + sign the manifest
-python build.py
-auspexai-tenant manifest sign pkg/manifest.json --key <vigiles_key> -o pkg/manifest.json.sig
-# 2. operator stages pkg/ on a serving worker + submits + approves (TRUSTED, repl 1)
-# 3. drive it
+# 1. build + sign the manifest (VIGILES_LABEL must be unique per experiment)
+VIGILES_LABEL=<unique-label> VIGILES_MODEL_ID=<served-store-id> python build.py
+auspexai-tenant manifest sign pkg/manifest.json -o pkg/manifest.json.sig
+# 2. upload the package once (content-addressed; later manifests re-pin it),
+#    then submit — workers AUTO-FETCH and verify the package (#40a); no staging
+auspexai-tenant package upload pkg/
+auspexai-tenant manifest upload pkg/manifest.json --coordinator https://coord.auspexai.network
+# 3. Maintainer approves in the console; then drive it (from driver/ —
+#    PYTHONPATH=. until sdk>v0.5.6 puts the cwd on the loader path)
 auspexai-tenant experiment run <coordinator-experiment-id> \
     --driver drift_driver:build \
     --coordinator https://coord.auspexai.network --key <vigiles_key> \
