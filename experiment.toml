@@ -16,6 +16,7 @@ tenant_id = "vigiles-lab"              # the onboarded tenancy
 contact = "vigiles@auspexai.network"   # → manifest tenant_maintainer_contact
 model_id = "gemma-3-1b-it-q4"          # MUST match the worker's served BYOM store id (#30 routing key)
 model_version = "1.0"
+research_class = "behavioral_drift"    # §9 #48 — routine class → eligible for auto-approval at tier ≥ T2
 local_weights_required = true
 replication = 1                        # consensus replicas per unit (trusted repl-1 for D6)
 duration_hours = 1                     # → manifest expected_duration_hours
