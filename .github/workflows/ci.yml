@@ -34,6 +34,6 @@ jobs:
       - name: Format (ruff format --check)
         run: uv run ruff format --check .
       - name: Build + validate the manifest
-        run: uv run python build.py
+        run: uv run auspexai-tenant experiment build pkg/ --exact-label
       - name: Tests
         run: uv run pytest -q

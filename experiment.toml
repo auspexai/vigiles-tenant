@@ -1,29 +1,44 @@
-# Vigiles experiment configuration (auspexai-tenant>=0.5.8).
+# Vigiles experiment configuration (auspexai-tenant>=0.5.9).
 #
-# One checked-in file instead of env-var one-liners. build.py reads
-# [experiment]; the drift driver reads [driver]. Re-running the build stamps a
-# fresh unique label suffix, so `experiment submit` never 409s on a reused label.
+# One checked-in file is the whole build. `experiment build` (SDK, generic)
+# reads [experiment]/[executor]/[reducer]/[work_unit_source] and writes
+# pkg/manifest.json — no per-tenant build.py. The drift driver reads [driver].
+# Re-running the build stamps a fresh unique label suffix, so `experiment
+# submit` never 409s on a label that is unique forever (incl. aborted runs).
 #
-#   python build.py                       # build pkg/manifest.json from this file
+#   auspexai-tenant experiment build  pkg/                     # toml → pkg/manifest.json
 #   auspexai-tenant experiment submit pkg/ --key <vigiles_key>
 #   cd driver && auspexai-tenant experiment run latest --key <vigiles_key>
-#
-# Every value can still be overridden by the legacy VIGILES_* env vars.
 
 [experiment]
-label = "vigiles-d6-drift"            # BASE label; build.py appends a unique suffix
-model_id = "gemma-3-1b-it-q4"         # MUST match the worker's served BYOM store id (#30 routing key)
-tenant_id = "vigiles-lab"             # the onboarded tenancy
-replication = 1                       # consensus replicas per unit (trusted repl-1 for D6)
-duration_hours = 1                    # manifest expected_duration_hours
+label = "vigiles-d6-drift"             # BASE label; the build stamps a unique suffix
+tenant_id = "vigiles-lab"              # the onboarded tenancy
+contact = "vigiles@auspexai.network"   # → manifest tenant_maintainer_contact
+model_id = "gemma-3-1b-it-q4"          # MUST match the worker's served BYOM store id (#30 routing key)
+model_version = "1.0"
+local_weights_required = true
+replication = 1                        # consensus replicas per unit (trusted repl-1 for D6)
+duration_hours = 1                     # → manifest expected_duration_hours
+sensitive_content_flags = []           # e.g. ["jailbreak"] → also needs an approver attestation
+research_goal = "Vigiles D6 — the first real tenant: a deterministic behavioral-drift probe panel run against a worker-served local LLM through the AuspexAI inference broker. Each work unit re-runs a fixed probe at temperature 0 with a pinned seed; the executor reduces the response to a sha256 anchor plus light lexical features (no raw text — Research Ethics §7 containment) and the adaptive driver folds the per-probe consensus hashes into a Counter, converging once every probe's consensus response holds stable across consecutive rounds. Exercises the full local-LLM execution path (W-S model serving + sandbox inference broker) and the persisted, Rekor-anchored result-set attestation end-to-end."
+prompt_characteristics = "A small fixed panel of neutral instruction-following probes (greeting, arithmetic, enumeration) carried in each unit's payload; re-run every round with a constant seed so a changed consensus hash is the drift signal."
+
+[executor]
+command = ["python", "executor.py"]    # run inside pkg/; package_sha256 is digested over pkg/
+
+[reducer]
+kind = "builtin_hash_agreement"
+
+[work_unit_source]
+kind = "static"                        # driver-fed; tarball coords optional
 
 [driver]
-entrypoint = "drift_driver:build"     # the DriverSpec factory (module:attr)
-journal = "auto"                      # auto → <label>.journal
+entrypoint = "drift_driver:build"      # the DriverSpec factory (module:attr)
+journal = "auto"                       # auto → <label>.journal
 
 # Adaptive-run knobs (opaque pass-through to drift_driver):
-round_interval_seconds = 300          # cadence between rounds (0 = no sleep)
-run_seconds = 0                       # 0 = converge-on-stability; >0 = duration mode (long-horizon)
-max_rounds = 50                       # client-side round guard (raise for long-horizon: ~96 for 8h@300s)
-stable_rounds = 3                     # consecutive no-new-bucket rounds → converged
-unit_prefix = "d6"                    # unit-id prefix (a run-distinct tag)
+round_interval_seconds = 300           # cadence between rounds (0 = no sleep)
+run_seconds = 0                        # 0 = converge-on-stability; >0 = duration mode (long-horizon)
+max_rounds = 50                        # client-side round guard (raise for long-horizon: ~96 for 8h@300s)
+stable_rounds = 3                      # consecutive no-new-bucket rounds → converged
+unit_prefix = "d6"                     # unit-id prefix (a run-distinct tag)

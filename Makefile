@@ -14,7 +14,7 @@ lint:
 	uv run ruff format --check .
 
 manifest:
-	uv run python build.py
+	uv run auspexai-tenant experiment build pkg/ --exact-label
 
 test:
 	uv run pytest -q

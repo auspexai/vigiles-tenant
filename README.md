@@ -12,17 +12,17 @@ Vigiles is a sibling project to [Sentinel](https://github.com/jasongagne-git/sen
 
 - **`pkg/`** — the tenant package staged on the worker. `executor.py` runs one drift probe per work unit against the worker-served model through the AuspexAI inference broker (W-S, §9 #43) and reduces the response to a sha256 anchor + light lexical features (no raw text — Research Ethics §7 containment). It imports only the vendored `lite.py` (the SDK's stdlib-only `LiteHarness` + `InferenceClient`), so it runs under the worker sandbox's system Python with zero installs.
 - **`driver/drift_driver.py`** — the adaptive `run_until` driver. Re-runs a fixed probe panel each round at temperature 0 with a pinned seed and folds the per-probe consensus hashes into a `Counter`; converges once every probe's consensus response holds stable across consecutive rounds (a changed hash for a fixed probe+seed is the drift signal).
-- **`build.py`** — builds + validates the manifest and computes `executor.package_sha256` over the package files. `VIGILES_MODEL_ID=<store-id>` selects the served model.
+- **`experiment.toml`** — the whole build. `[experiment]`/`[executor]`/`[reducer]` feed `auspexai-tenant experiment build pkg/` (SDK-generic; no per-tenant `build.py`), which validates the manifest and computes `executor.package_sha256` over the package files. `[driver]` feeds `experiment run`.
 - **`tests/`** — offline executor (vs a fake broker) + driver-convergence tests; no live coordinator or model.
 
 ### Running D6
 
-Knobs live in [`experiment.toml`](experiment.toml) (`[experiment]` + `[driver]`); the legacy `VIGILES_*` env vars still override any value. Requires `auspexai-tenant>=0.5.8`.
+Knobs live in [`experiment.toml`](experiment.toml): `[experiment]`/`[executor]`/`[reducer]` feed the build, `[driver]` feeds the run. Requires `auspexai-tenant>=0.5.9` (`experiment build`). The legacy `VIGILES_*` env vars still override the *driver* knobs (see [Long-horizon runs](#long-horizon-runs)).
 
 ```sh
 # 1. build pkg/manifest.json from experiment.toml — the label gets a unique
 #    suffix stamped on, so re-building then submitting never 409s
-python build.py
+auspexai-tenant experiment build pkg/
 # 2. one step: sign + upload the package + create the experiment
 #    (workers AUTO-FETCH + verify the package, #40a — no staging)
 auspexai-tenant experiment submit pkg/ --key <vigiles_key>

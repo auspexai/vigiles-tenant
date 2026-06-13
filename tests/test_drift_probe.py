@@ -239,7 +239,9 @@ def _no_config(monkeypatch):
     logic tests bind knobs via env (or none), not the on-disk [driver] table."""
     from auspexai_tenant.experiment_config import ExperimentConfig
 
-    monkeypatch.setattr(drift_driver, "load_experiment_config", lambda *_a, **_k: ExperimentConfig())
+    monkeypatch.setattr(
+        drift_driver, "load_experiment_config", lambda *_a, **_k: ExperimentConfig()
+    )
 
 
 def test_build_binds_knobs_from_driver_config(monkeypatch):
