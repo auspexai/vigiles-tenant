@@ -17,20 +17,18 @@ Vigiles is a sibling project to [Sentinel](https://github.com/jasongagne-git/sen
 
 ### Running D6
 
+Knobs live in [`experiment.toml`](experiment.toml) (`[experiment]` + `[driver]`); the legacy `VIGILES_*` env vars still override any value. Requires `auspexai-tenant>=0.5.8`.
+
 ```sh
-# 1. build + sign the manifest (VIGILES_LABEL must be unique per experiment)
-VIGILES_LABEL=<unique-label> VIGILES_MODEL_ID=<served-store-id> python build.py
-auspexai-tenant manifest sign pkg/manifest.json -o pkg/manifest.json.sig
-# 2. upload the package once (content-addressed; later manifests re-pin it),
-#    then submit — workers AUTO-FETCH and verify the package (#40a); no staging
-auspexai-tenant package upload pkg/
-auspexai-tenant manifest upload pkg/manifest.json --coordinator https://coord.auspexai.network
-# 3. Maintainer approves in the console; then drive it (from driver/;
-#    auspexai-tenant>=0.5.7 puts the cwd on the loader path automatically)
-auspexai-tenant experiment run <coordinator-experiment-id> \
-    --driver drift_driver:build \
-    --coordinator https://coord.auspexai.network --key <vigiles_key> \
-    --journal vigiles-d6.journal --doorbell
+# 1. build pkg/manifest.json from experiment.toml — the label gets a unique
+#    suffix stamped on, so re-building then submitting never 409s
+python build.py
+# 2. one step: sign + upload the package + create the experiment
+#    (workers AUTO-FETCH + verify the package, #40a — no staging)
+auspexai-tenant experiment submit pkg/ --key <vigiles_key>
+# 3. maintainer approves in the console; then drive it — 'latest' resolves the
+#    experiment you just submitted, --driver/--journal default from [driver]
+cd driver && auspexai-tenant experiment run latest --key <vigiles_key> --doorbell
 ```
 
 Determinism is consensus-critical: the worker's inference broker pins `temperature=0` + the seed and authorizes only the manifest's exact model id, so replicas of a unit produce byte-identical payloads (the hash-agreement precondition). The manifest declares the model with `local_weights_required`, which routes units only to workers that hold + serve it.

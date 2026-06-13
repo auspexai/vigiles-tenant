@@ -1,0 +1,29 @@
+# Vigiles experiment configuration (auspexai-tenant>=0.5.8).
+#
+# One checked-in file instead of env-var one-liners. build.py reads
+# [experiment]; the drift driver reads [driver]. Re-running the build stamps a
+# fresh unique label suffix, so `experiment submit` never 409s on a reused label.
+#
+#   python build.py                       # build pkg/manifest.json from this file
+#   auspexai-tenant experiment submit pkg/ --key <vigiles_key>
+#   cd driver && auspexai-tenant experiment run latest --key <vigiles_key>
+#
+# Every value can still be overridden by the legacy VIGILES_* env vars.
+
+[experiment]
+label = "vigiles-d6-drift"            # BASE label; build.py appends a unique suffix
+model_id = "gemma-3-1b-it-q4"         # MUST match the worker's served BYOM store id (#30 routing key)
+tenant_id = "vigiles-lab"             # the onboarded tenancy
+replication = 1                       # consensus replicas per unit (trusted repl-1 for D6)
+duration_hours = 1                    # manifest expected_duration_hours
+
+[driver]
+entrypoint = "drift_driver:build"     # the DriverSpec factory (module:attr)
+journal = "auto"                      # auto → <label>.journal
+
+# Adaptive-run knobs (opaque pass-through to drift_driver):
+round_interval_seconds = 300          # cadence between rounds (0 = no sleep)
+run_seconds = 0                       # 0 = converge-on-stability; >0 = duration mode (long-horizon)
+max_rounds = 50                       # client-side round guard (raise for long-horizon: ~96 for 8h@300s)
+stable_rounds = 3                     # consecutive no-new-bucket rounds → converged
+unit_prefix = "d6"                    # unit-id prefix (a run-distinct tag)

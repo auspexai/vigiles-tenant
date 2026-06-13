@@ -19,19 +19,28 @@ import json
 import os
 from pathlib import Path
 
+from auspexai_tenant.experiment_config import load_experiment_config, make_unique_label
 from auspexai_tenant.manifest import Manifest, compute_package_digest
 
 HERE = Path(__file__).parent
 PKG = HERE / "pkg"  # executor.py + lite.py (both digested into package_sha256)
-TENANT_ID = os.environ.get(
-    "VIGILES_TENANT_ID", "vigiles-lab"
-)  # the onboarded tenancy (legacy hand-created "vigiles" retired 2026-06-12)
-# Per-tenant experiment labels are unique FOREVER (aborted runs keep theirs) —
-# override for re-runs: VIGILES_LABEL=vigiles-d6-drift-r2 python build.py
-LABEL = os.environ.get("VIGILES_LABEL", "vigiles-d6-drift")
-# Default to a small instruct GGUF that fits an 8GB Jetson; override to match
-# the worker's served store id exactly (the #30 routing key).
-MODEL_ID = os.environ.get("VIGILES_MODEL_ID", "gemma-3-1b-it-q4")
+
+# experiment.toml is the source of truth; the legacy VIGILES_* env vars still
+# override any value (so existing one-liners keep working).
+_CFG = load_experiment_config(HERE)
+_EXP = _CFG.experiment
+
+TENANT_ID = os.environ.get("VIGILES_TENANT_ID") or _EXP.get("tenant_id", "vigiles-lab")
+MODEL_ID = os.environ.get("VIGILES_MODEL_ID") or _CFG.model_id or "gemma-3-1b-it-q4"
+_BASE_LABEL = os.environ.get("VIGILES_LABEL") or _EXP.get("label", "vigiles-d6-drift")
+# Labels are unique FOREVER (aborted runs keep theirs), so stamp a timestamp
+# suffix → re-building then `experiment submit` never 409s. VIGILES_EXACT_LABEL=1
+# keeps the base label verbatim.
+LABEL = (
+    _BASE_LABEL if os.environ.get("VIGILES_EXACT_LABEL") == "1" else make_unique_label(_BASE_LABEL)
+)
+_REPLICATION = int(os.environ.get("VIGILES_REPLICATION") or _EXP.get("replication", 1))
+_DURATION_H = float(os.environ.get("VIGILES_DURATION_HOURS") or _EXP.get("duration_hours", 1))
 
 
 def manifest_sha256(manifest: dict) -> str:
@@ -67,8 +76,8 @@ def main() -> None:
             "is the drift signal."
         ),
         "sensitive_content_flags": [],
-        "expected_duration_hours": 1,
-        "replication_factor": 1,
+        "expected_duration_hours": _DURATION_H,
+        "replication_factor": _REPLICATION,
         "work_unit_source": {"kind": "static", "tarball_sha256": "0" * 64},
         "executor": {"command": ["python", "executor.py"], "package_sha256": pkg_digest},
         "reducer": {"kind": "builtin_hash_agreement"},
@@ -82,17 +91,13 @@ def main() -> None:
     print(f"manifest_sha256: {msha}")
     print(f"label          : {LABEL}")
     print(f"model_id       : {MODEL_ID}")
+    print(f"replication    : {_REPLICATION}")
     print(f"package files  : {sorted(p.name for p in PKG.iterdir())}")
     print()
-    print("# --- sign (writes pkg/manifest.json.sig; now excluded from the digest) ---")
-    print(
-        "auspexai-tenant manifest sign pkg/manifest.json --key <vigiles_key> -o pkg/manifest.json.sig"
-    )
-    print("# --- stage on the serving worker (operator) ---")
-    print(f"ssh <worker> 'mkdir -p ~/.local/share/auspexai-worker/tenants/{msha}'")
-    print(
-        f"scp {PKG}/manifest.json {PKG}/executor.py {PKG}/lite.py <worker>:~/.local/share/auspexai-worker/tenants/{msha}/"
-    )
+    print("# --- one step: sign + upload the package + create the experiment ---")
+    print("auspexai-tenant experiment submit pkg/ --key <vigiles_key>")
+    print("# --- then drive it (the worker AUTO-FETCHES the package; no staging) ---")
+    print("cd driver && auspexai-tenant experiment run latest --key <vigiles_key>")
     print(f"# (the GGUF for {MODEL_ID} must already be in the worker's models/ store + served)")
 
 

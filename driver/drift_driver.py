@@ -54,9 +54,11 @@ import logging
 import os
 import time
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from auspexai_tenant import Counter, DriverSpec, Unit
+from auspexai_tenant.experiment_config import load_experiment_config
 
 log = logging.getLogger("vigiles.drift")
 
@@ -94,12 +96,10 @@ def _bucket(result: dict[str, Any]) -> str:
     return f"{p['probe_id']}::{p['response_sha256'][:12]}"
 
 
-# Run-unique unit-id prefix. Unit ids MUST NOT collide across experiments:
-# the worker's local bookkeeping keys by unit_id (worker bug, tracked), so a
-# resubmitted run reusing ids can get its results misattributed to a prior
-# experiment's assignments. Until the worker fix lands, every run sets its own
-# prefix (e.g. VIGILES_UNIT_PREFIX=r4 → "r4-p-greeting-r0").
-UNIT_PREFIX = os.environ.get("VIGILES_UNIT_PREFIX", "d6")
+# Default unit-id prefix (a run-distinct tag; experiment.toml [driver].unit_prefix
+# or VIGILES_UNIT_PREFIX override it). Unit ids carry the round; a distinct prefix
+# keeps a re-submitted run's ids from colliding across experiments.
+_DEFAULT_PREFIX = "d6"
 
 
 def _env_seconds(name: str) -> float:
@@ -109,13 +109,13 @@ def _env_seconds(name: str) -> float:
     return value if value > 0 else 0.0
 
 
-def _next_batch(_agg: Counter, rnd: int) -> list[Unit]:
+def _next_batch(_agg: Counter, rnd: int, prefix: str) -> list[Unit]:
     """Re-run the full probe panel each round. The unit_id carries the round so
     each round's probes are distinct work (the seed stays fixed — that's the
     point: same input, watching for output drift)."""
     return [
         Unit(
-            f"{UNIT_PREFIX}-{p['probe_id']}-r{rnd}",
+            f"{prefix}-{p['probe_id']}-r{rnd}",
             {
                 "probe_id": p["probe_id"],
                 "messages": p["messages"],
@@ -128,7 +128,7 @@ def _next_batch(_agg: Counter, rnd: int) -> list[Unit]:
 
 
 def _make_next_batch(
-    run_seconds: float, interval: float
+    run_seconds: float, interval: float, prefix: str
 ) -> Callable[[Counter, int], list[Unit] | None]:
     """Wrap the panel generator with the long-horizon knobs. This is where the
     driver hands the next round to the SDK loop, so it is where the duration
@@ -146,12 +146,12 @@ def _make_next_batch(
             _sleep(interval)
             if run_seconds and _now() - state["t0"] >= run_seconds:
                 return None  # the sleep crossed the deadline — don't issue
-        return _next_batch(agg, rnd)
+        return _next_batch(agg, rnd, prefix)
 
     return next_batch
 
 
-def _make_condition(*, duration_mode: bool = False):
+def _make_condition(*, duration_mode: bool = False, stable_rounds: int = STABLE_ROUNDS):
     """Converged once the set of distinct (probe, hash) buckets has not grown
     for STABLE_ROUNDS consecutive COMPLETED ROUNDS — every probe's consensus
     response has held stable.
@@ -188,17 +188,17 @@ def _make_condition(*, duration_mode: bool = False):
         if rounds_done == state["judged_rounds"]:
             # Same boundary as the last judgment (e.g. a no-progress poll):
             # hold the verdict, never re-tick the streak.
-            return not duration_mode and state["streak"] >= STABLE_ROUNDS
+            return not duration_mode and state["streak"] >= stable_rounds
         state["judged_rounds"] = rounds_done
         distinct = len(agg.counts)
         if distinct == state["last_distinct"]:
             state["streak"] += 1
-            if state["streak"] >= STABLE_ROUNDS and not state["stable"]:
+            if state["streak"] >= stable_rounds and not state["stable"]:
                 state["stable"] = True
                 log.info(
                     "panel stable at round %d: no new (probe, hash) pair for %d rounds",
                     rounds_done,
-                    STABLE_ROUNDS,
+                    stable_rounds,
                 )
         else:
             new = sorted(set(agg.counts) - state["known"])
@@ -216,21 +216,34 @@ def _make_condition(*, duration_mode: bool = False):
             state["streak"] = 0  # new (probe, hash) bucket appeared — drift
             state["last_distinct"] = distinct
         state["known"] = frozenset(agg.counts)
-        return not duration_mode and state["streak"] >= STABLE_ROUNDS
+        return not duration_mode and state["streak"] >= stable_rounds
 
     return converged
 
 
 def build() -> DriverSpec:
     """The DriverSpec factory named on `auspexai-tenant experiment run --driver`.
-    Reads the long-horizon env knobs here (not at import) so each run binds its
-    own configuration; unset knobs reproduce D6 exactly."""
-    run_seconds = _env_seconds("VIGILES_RUN_SECONDS")
-    interval = _env_seconds("VIGILES_ROUND_INTERVAL_SECONDS")
-    max_rounds = int(os.environ.get("VIGILES_MAX_ROUNDS") or MAX_ROUNDS)
+    Reads the run knobs HERE (not at import) so each run binds its own config.
+    Source of truth: experiment.toml [driver] in the repo root (robust to cwd —
+    the driver runs from driver/); the legacy VIGILES_* env vars override any
+    value; unset everywhere reproduces D6 exactly."""
+    drv = load_experiment_config(Path(__file__).resolve().parent.parent).driver
+
+    def _seconds(env_name: str, key: str) -> float:
+        v = _env_seconds(env_name)
+        if v or os.environ.get(env_name, "").strip():
+            return v
+        cv = float(drv.get(key, 0) or 0)
+        return cv if cv > 0 else 0.0
+
+    run_seconds = _seconds("VIGILES_RUN_SECONDS", "run_seconds")
+    interval = _seconds("VIGILES_ROUND_INTERVAL_SECONDS", "round_interval_seconds")
+    max_rounds = int(os.environ.get("VIGILES_MAX_ROUNDS") or drv.get("max_rounds") or MAX_ROUNDS)
+    prefix = os.environ.get("VIGILES_UNIT_PREFIX") or drv.get("unit_prefix") or _DEFAULT_PREFIX
+    stable_rounds = int(drv.get("stable_rounds") or STABLE_ROUNDS)
     return DriverSpec(
-        condition=_make_condition(duration_mode=run_seconds > 0),
-        next_batch=_make_next_batch(run_seconds, interval),
+        condition=_make_condition(duration_mode=run_seconds > 0, stable_rounds=stable_rounds),
+        next_batch=_make_next_batch(run_seconds, interval, prefix),
         reduce=Counter(bucket=_bucket),
         max_rounds=max_rounds,
     )

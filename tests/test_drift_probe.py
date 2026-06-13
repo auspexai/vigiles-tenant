@@ -228,12 +228,42 @@ def test_driver_resets_streak_on_drift():
 
 
 def test_next_batch_reruns_full_panel_with_fixed_seed():
-    units = drift_driver._next_batch(Counter(), 4)
+    units = drift_driver._next_batch(Counter(), 4, "d6")
     assert len(units) == len(drift_driver.PROBES)
-    assert {u.unit_id for u in units} == {
-        f"{drift_driver.UNIT_PREFIX}-{p['probe_id']}-r4" for p in drift_driver.PROBES
-    }
+    assert {u.unit_id for u in units} == {f"d6-{p['probe_id']}-r4" for p in drift_driver.PROBES}
     assert all(u.payload["seed"] == drift_driver.SEED for u in units)
+
+
+def _no_config(monkeypatch):
+    """Isolate build() from the repo's checked-in experiment.toml — the driver-
+    logic tests bind knobs via env (or none), not the on-disk [driver] table."""
+    from auspexai_tenant.experiment_config import ExperimentConfig
+
+    monkeypatch.setattr(drift_driver, "load_experiment_config", lambda *_a, **_k: ExperimentConfig())
+
+
+def test_build_binds_knobs_from_driver_config(monkeypatch):
+    """build() reads experiment.toml [driver] (max_rounds, unit_prefix, …) when
+    the env vars are unset — the Part A wiring."""
+    from auspexai_tenant.experiment_config import ExperimentConfig
+
+    for var in (
+        "VIGILES_RUN_SECONDS",
+        "VIGILES_ROUND_INTERVAL_SECONDS",
+        "VIGILES_MAX_ROUNDS",
+        "VIGILES_UNIT_PREFIX",
+    ):
+        monkeypatch.delenv(var, raising=False)
+    cfg = ExperimentConfig(driver={"max_rounds": 7, "unit_prefix": "r9"})
+    monkeypatch.setattr(drift_driver, "load_experiment_config", lambda *_a, **_k: cfg)
+    spec = drift_driver.build()
+    assert spec.max_rounds == 7  # [driver].max_rounds
+    units = spec.next_batch(Counter(bucket=drift_driver._bucket), 0)  # rnd 0 → no cadence sleep
+    assert all(u.unit_id.startswith("r9-") for u in units)  # [driver].unit_prefix
+
+    # env still overrides the config.
+    monkeypatch.setenv("VIGILES_MAX_ROUNDS", "3")
+    assert drift_driver.build().max_rounds == 3
 
 
 # ---- long-horizon knobs (VIGILES_RUN_SECONDS / _ROUND_INTERVAL_SECONDS / ----
@@ -272,6 +302,7 @@ def test_duration_mode_keeps_issuing_past_stability_until_elapsed(monkeypatch):
     declines the round after the elapsed window (run_until outcome: exhausted)."""
     clock = _patch_clock(monkeypatch)
     monkeypatch.setenv("VIGILES_RUN_SECONDS", "100")
+    _no_config(monkeypatch)
     spec = drift_driver.build()
     agg = Counter(bucket=drift_driver._bucket)
 
@@ -377,6 +408,7 @@ def test_defaults_unchanged_when_env_unset(monkeypatch):
 
     monkeypatch.setattr(drift_driver, "_sleep", _boom)
     monkeypatch.setattr(drift_driver, "_now", _boom)
+    _no_config(monkeypatch)
     spec = drift_driver.build()
     assert spec.max_rounds == drift_driver.MAX_ROUNDS == 50
     agg = Counter(bucket=drift_driver._bucket)
