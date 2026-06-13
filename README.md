@@ -25,8 +25,8 @@ auspexai-tenant manifest sign pkg/manifest.json -o pkg/manifest.json.sig
 #    then submit — workers AUTO-FETCH and verify the package (#40a); no staging
 auspexai-tenant package upload pkg/
 auspexai-tenant manifest upload pkg/manifest.json --coordinator https://coord.auspexai.network
-# 3. Maintainer approves in the console; then drive it (from driver/ —
-#    PYTHONPATH=. until sdk>v0.5.6 puts the cwd on the loader path)
+# 3. Maintainer approves in the console; then drive it (from driver/;
+#    auspexai-tenant>=0.5.7 puts the cwd on the loader path automatically)
 auspexai-tenant experiment run <coordinator-experiment-id> \
     --driver drift_driver:build \
     --coordinator https://coord.auspexai.network --key <vigiles_key> \
