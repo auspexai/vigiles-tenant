@@ -6,9 +6,8 @@
 # Re-running the build stamps a fresh unique label suffix, so `experiment
 # submit` never 409s on a label that is unique forever (incl. aborted runs).
 #
-#   auspexai-tenant experiment build  pkg/                     # toml → pkg/manifest.json
-#   auspexai-tenant experiment submit pkg/ --key <vigiles_key>
-#   cd driver && auspexai-tenant experiment run latest --key <vigiles_key>
+#   auspexai-tenant experiment launch --key <vigiles_key>      # build + submit + await-approval + drive, ONE command
+#   # or step-by-step:  experiment build pkg/  →  submit pkg/ --key …  →  run latest --key …
 
 [experiment]
 label = "vigiles-d6-drift"             # BASE label; the build stamps a unique suffix
@@ -24,7 +23,7 @@ hf_repo = "unsloth/gemma-3-1b-it-GGUF"
 hf_filename = "gemma-3-1b-it-Q4_K_M.gguf"
 research_class = "behavioral_drift"    # §9 #48 — routine class → eligible for auto-approval at tier ≥ T2
 local_weights_required = true
-replication = 2                        # cross-worker consensus (within_cell_exact) — exercises the firewalls on real data
+replication = 1                        # repl-1/trusted: one worker per unit (process_only); matches the 2-worker fleet so `launch` defaults to trusted with no approval-override. Bump to 3 for within_cell_exact once a 3rd worker is enrolled (2 rounds UP to standard/repl-3, which needs 3 distinct workers)
 duration_hours = 1                     # → manifest expected_duration_hours
 sensitive_content_flags = []           # e.g. ["jailbreak"] → also needs an approver attestation
 research_goal = "Vigiles D6 — the first real tenant: a deterministic behavioral-drift probe panel run against a worker-served local LLM through the AuspexAI inference broker. Each work unit re-runs a fixed probe at temperature 0 with a pinned seed; the executor reduces the response to a sha256 anchor plus light lexical features (no raw text — Research Ethics §7 containment) and the adaptive driver folds the per-probe consensus hashes into a Counter, converging once every probe's consensus response holds stable across consecutive rounds. Exercises the full local-LLM execution path (W-S model serving + sandbox inference broker) and the persisted, Rekor-anchored result-set attestation end-to-end."
