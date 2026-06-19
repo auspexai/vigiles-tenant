@@ -12,7 +12,7 @@
 
 [experiment]
 label = "vigiles-d6-drift"             # BASE label; the build stamps a unique suffix
-tenant_id = "vigiles"                  # the onboarded tenancy (matches the enrolled key)
+tenant_id = "vigiles-lab"              # the onboarded tenancy — MUST match the signing key's bound tenant (coordinator rejects a mismatch with 403 manifest_tenant_mismatch)
 contact = "vigiles@auspexai.network"   # → manifest tenant_maintainer_contact
 # key_path = "~/.config/auspexai-tenant/vigiles.key"  # signing key; set once → `launch` signs with it, no --key. Omit to use the SDK default / --key.
 model_id = "gemma-3-1b-it-q4"          # routing key; auto-acquired under this id from the coords below
