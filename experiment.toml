@@ -14,6 +14,7 @@
 label = "vigiles-d6-drift"             # BASE label; the build stamps a unique suffix
 tenant_id = "vigiles"                  # the onboarded tenancy (matches the enrolled key)
 contact = "vigiles@auspexai.network"   # → manifest tenant_maintainer_contact
+# key_path = "~/.config/auspexai-tenant/vigiles.key"  # signing key; set once → `launch` signs with it, no --key. Omit to use the SDK default / --key.
 model_id = "gemma-3-1b-it-q4"          # routing key; auto-acquired under this id from the coords below
 model_version = "1.0"
 # M3/#44 lazy auto-acquire: an auto_acquire worker that lacks the model pulls
@@ -23,7 +24,7 @@ hf_repo = "unsloth/gemma-3-1b-it-GGUF"
 hf_filename = "gemma-3-1b-it-Q4_K_M.gguf"
 research_class = "behavioral_drift"    # §9 #48 — routine class → eligible for auto-approval at tier ≥ T2
 local_weights_required = true
-replication = 1                        # consensus replicas per unit (trusted repl-1 for D6)
+replication = 2                        # cross-worker consensus (within_cell_exact) — exercises the firewalls on real data
 duration_hours = 1                     # → manifest expected_duration_hours
 sensitive_content_flags = []           # e.g. ["jailbreak"] → also needs an approver attestation
 research_goal = "Vigiles D6 — the first real tenant: a deterministic behavioral-drift probe panel run against a worker-served local LLM through the AuspexAI inference broker. Each work unit re-runs a fixed probe at temperature 0 with a pinned seed; the executor reduces the response to a sha256 anchor plus light lexical features (no raw text — Research Ethics §7 containment) and the adaptive driver folds the per-probe consensus hashes into a Counter, converging once every probe's consensus response holds stable across consecutive rounds. Exercises the full local-LLM execution path (W-S model serving + sandbox inference broker) and the persisted, Rekor-anchored result-set attestation end-to-end."
@@ -40,10 +41,11 @@ kind = "static"                        # driver-fed; tarball coords optional
 
 [driver]
 entrypoint = "drift_driver:build"      # the DriverSpec factory (module:attr)
+path = "driver"                        # dir holding drift_driver.py → on sys.path, so `run`/`launch` resolve it from the repo root (no cd)
 journal = "auto"                       # auto → <label>.journal
 
 # Adaptive-run knobs (opaque pass-through to drift_driver):
-round_interval_seconds = 300           # cadence between rounds (0 = no sleep)
+round_interval_seconds = 0             # 0 = no sleep (fast first keystone run); restore 300 for a temporally-spaced drift study
 run_seconds = 0                        # 0 = converge-on-stability; >0 = duration mode (long-horizon)
 max_rounds = 50                        # client-side round guard (raise for long-horizon: ~96 for 8h@300s)
 stable_rounds = 3                      # consecutive no-new-bucket rounds → converged
