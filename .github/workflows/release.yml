@@ -1,0 +1,147 @@
+name: Release
+
+# Fires on version tags (e.g., v0.1.0). The tag is the trigger; the Maintainer
+# pushes it from a state where main-branch CI was green (GOVERNANCE §3.5:
+# release authority on researcher-facing repositories is Maintainer-only).
+#
+# Vigiles is the CURATED REFERENCE TENANT, not an importable library — pkg/ +
+# driver/ + experiment.toml are STAGED artifacts a worker runs, not a wheel
+# (see pyproject.toml: `py-modules = []`). So a release here is a versioned,
+# Sigstore-signed SNAPSHOT of the reference experiment — the stable point the
+# no-code starter on-ramp (D9 Phase 3) points at — NOT a PyPI package.
+#
+# Outputs a GitHub release with:
+#   - vigiles-tenant-<version>.tar.gz   (git archive of the tracked tree)
+#   - .sig / .cert                      (Sigstore keyless, like worker/SDK)
+#   - SHA256SUMS
+#
+# The runtime trust path for the experiment itself is the SDK's manifest
+# signature at submission time (executor.package_sha256, the tenant key); this
+# release signature covers the SOURCE SNAPSHOT a researcher downloads, mirroring
+# the other repos.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write   # create/update the GitHub release + upload assets
+  id-token: write   # OIDC for Sigstore keyless signing
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Snapshot, sign, and publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout source at tag
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Guard — tag is a clean version matching pyproject
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PROJ_VERSION=$(grep -m1 -E '^version = ' pyproject.toml | sed -E 's/^version = "([^"]+)"/\1/')
+          echo "tag=$TAG_VERSION  pyproject=$PROJ_VERSION"
+          if ! printf '%s' "$TAG_VERSION" | grep -qE '^[0-9]+(\.[0-9]+)+$'; then
+            echo "::error::tag '$TAG_VERSION' is not a clean release version."
+            exit 1
+          fi
+          if [ "$TAG_VERSION" != "$PROJ_VERSION" ]; then
+            echo "::error::tag '$TAG_VERSION' != pyproject [project].version '$PROJ_VERSION'. Bump pyproject.toml and re-tag."
+            exit 1
+          fi
+          echo "version=$TAG_VERSION" >> "$GITHUB_ENV"
+
+      - name: Build source snapshot (git archive of the tracked tree)
+        run: |
+          mkdir -p dist
+          git archive --format=tar.gz \
+            --prefix="vigiles-tenant-${version}/" \
+            -o "dist/vigiles-tenant-${version}.tar.gz" \
+            "${GITHUB_REF_NAME}"
+          ls -la dist/
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: 'v2.5.0'
+
+      - name: Sign the snapshot (Sigstore keyless via GitHub OIDC)
+        run: |
+          cosign sign-blob --yes \
+            --output-signature "dist/vigiles-tenant-${version}.tar.gz.sig" \
+            --output-certificate "dist/vigiles-tenant-${version}.tar.gz.cert" \
+            "dist/vigiles-tenant-${version}.tar.gz"
+          ls -la dist/
+
+      - name: Compute SHA256SUMS
+        run: |
+          (cd dist && sha256sum vigiles-tenant-* | grep -vE '\.(sig|cert)$' > SHA256SUMS)
+          cat dist/SHA256SUMS
+
+      - name: Verify own signature (self-check)
+        run: |
+          cosign verify-blob \
+            --certificate-identity-regexp='^https://github\.com/auspexai/.+/\.github/workflows/.+@.+$' \
+            --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
+            --signature "dist/vigiles-tenant-${version}.tar.gz.sig" \
+            --certificate "dist/vigiles-tenant-${version}.tar.gz.cert" \
+            "dist/vigiles-tenant-${version}.tar.gz"
+
+      # Create as a DRAFT with all assets attached, then publish as the final
+      # step — so the release object never exists in a published-but-asset-less
+      # state (consistent with the worker/SDK release flow).
+      - name: Create GitHub Release (draft, assets attached)
+        uses: softprops/action-gh-release@v3
+        with:
+          name: ${{ env.version }}
+          tag_name: ${{ github.ref_name }}
+          draft: true
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            dist/vigiles-tenant-*.tar.gz
+            dist/*.sig
+            dist/*.cert
+            dist/SHA256SUMS
+          body: |
+            Vigiles ${{ env.version }} — AuspexAI's curated reference tenant
+            (behavioral-drift experiment). This signed source snapshot is the
+            stable point the no-code starter on-ramp points at. It is NOT a
+            PyPI package: `pkg/` + `driver/` are staged artifacts run by a
+            worker, not an importable library.
+
+            ## What's in the snapshot
+
+            - `experiment.toml` — the reference experiment definition (the whole build)
+            - `pkg/` — the staged executor (`executor.py` + vendored `lite.py`,
+              stdlib-only, runs under the worker sandbox's system Python)
+            - `driver/` — the adaptive `run_until` driver
+            - `manifests/` — signed manifest fixtures
+
+            ## Verify the snapshot
+
+            ```bash
+            cosign verify-blob \
+              --certificate-identity-regexp='^https://github\.com/auspexai/.+/\.github/workflows/.+@.+$' \
+              --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
+              --signature vigiles-tenant-${{ env.version }}.tar.gz.sig \
+              --certificate vigiles-tenant-${{ env.version }}.tar.gz.cert \
+              vigiles-tenant-${{ env.version }}.tar.gz
+            ```
+
+            Trust roster: [AUTHORIZED_SIGNERS.md](https://github.com/auspexai/.github/blob/main/security/AUTHORIZED_SIGNERS.md).
+
+      - name: Publish the release (assets now attached)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release edit "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --draft=false --latest

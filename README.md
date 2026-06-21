@@ -6,7 +6,7 @@ Vigiles is a sibling project to [Sentinel](https://github.com/jasongagne-git/sen
 
 ## Status
 
-**D6 package built (2026-06-09); awaiting the first live run.** Vigiles is sequenced last in Phase 1 (per [Principles & Scope §5.3](https://github.com/auspexai/platform)) so the platform interfaces prove themselves against the synthetic test tenant before bending toward a real tenant's needs. The first experiment is **D6** — a deterministic behavioral-drift probe run against a worker-served local LLM. The minimal package + adaptive driver are in this repo; the live run needs a worker with inference serving enabled (`[inference] backend = "ollama"`) holding the declared model.
+**D6 package built (2026-06-09); first live run PROVEN (2026-06-20).** Vigiles is sequenced last in Phase 1 (per [Principles & Scope §5.3](https://github.com/auspexai/platform)) so the platform interfaces prove themselves against the synthetic test tenant before bending toward a real tenant's needs. The first experiment is **D6** — a deterministic behavioral-drift probe run against a worker-served local LLM. The minimal package + adaptive driver are in this repo; the live run needs a worker with inference serving enabled (`[inference] backend = "ollama"`) holding the declared model. The keystone run (`exp-_LtpfHNh`) completed at `replication = 2` with **0 divergence** — two independent workers produced byte-identical output at temperature 0 — confirming the cross-worker determinism the consensus check depends on.
 
 ## Layout
 
@@ -63,6 +63,10 @@ This repository holds:
 - The Vigiles tenant package — executor and driver consuming the AuspexAI [Tenant SDK](https://github.com/auspexai/tenant-sdk)
 - Experiment manifests and result schemas for behavioral drift research
 - Containment plan implementations per the [Research Ethics Policy](https://github.com/auspexai/.github/blob/main/RESEARCH_ETHICS_POLICY.md) §7
+
+## Releases
+
+Tagged versions are cut as **signed source snapshots** — a `v*` tag triggers the [release workflow](.github/workflows/release.yml). Vigiles is the curated reference tenant, not a wheel, so a release is a `git archive` of the tracked tree, Sigstore-signed (keyless OIDC, like the worker and SDK). This gives the no-code starter on-ramp a stable, verifiable point to pin. To cut one: bump `[project].version` in `pyproject.toml`, then push a matching `vX.Y.Z` tag from green `main` (the workflow guards `tag == pyproject version`). Each release's notes carry the `cosign verify-blob` command; the signing identity is on the [authorized signers](https://github.com/auspexai/.github/blob/main/security/AUTHORIZED_SIGNERS.md) roster.
 
 ## Research ethics
 
