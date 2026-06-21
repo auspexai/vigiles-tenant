@@ -148,7 +148,7 @@ def test_driver_converges_on_hash_stability():
     (driver.py poll loop), not once per round. Convergence must land only at
     the round boundary after STABLE_ROUNDS stable completed rounds: baseline
     round 0, stable rounds 1-3 → converged at the end of round 3."""
-    spec = drift_driver.build()
+    spec = drift_driver.build(_cfg())
     cond = spec.condition
     agg = Counter(bucket=drift_driver._bucket)
 
@@ -167,7 +167,7 @@ def test_driver_never_converges_mid_round_on_no_progress_polls():
     """D6 regression (2026-06-10): the run finalized with r4-p-refusal-r1 still
     pending — repeated no-progress polls ticked the streak inside one round.
     With a partial round folded, any number of condition calls must stay False."""
-    spec = drift_driver.build()
+    spec = drift_driver.build(_cfg())
     cond = spec.condition
     agg = Counter(bucket=drift_driver._bucket)
 
@@ -193,7 +193,7 @@ def test_driver_never_converges_mid_round_on_no_progress_polls():
 def test_driver_holds_verdict_when_repolled_at_same_boundary():
     """A completed-round boundary judged twice (poll with no new folds) must
     hold its verdict without advancing the streak."""
-    spec = drift_driver.build()
+    spec = drift_driver.build(_cfg())
     cond = spec.condition
     agg = Counter(bucket=drift_driver._bucket)
     for p, h in STABLE_PANEL:
@@ -204,7 +204,7 @@ def test_driver_holds_verdict_when_repolled_at_same_boundary():
 
 
 def test_driver_resets_streak_on_drift():
-    spec = drift_driver.build()
+    spec = drift_driver.build(_cfg())
     cond = spec.condition
     agg = Counter(bucket=drift_driver._bucket)
     for _ in range(1 + drift_driver.STABLE_ROUNDS - 1):  # baseline + 2 stable rounds
@@ -234,21 +234,17 @@ def test_next_batch_reruns_full_panel_with_fixed_seed():
     assert all(u.payload["seed"] == drift_driver.SEED for u in units)
 
 
-def _no_config(monkeypatch):
-    """Isolate build() from the repo's checked-in experiment.toml — the driver-
-    logic tests bind knobs via env (or none), not the on-disk [driver] table."""
+def _cfg(**driver):
+    """A resolved ExperimentConfig the CLI would hand to build(cfg). Driver-logic
+    tests pass an explicit (or empty) [driver] table; env vars still override."""
     from auspexai_tenant.experiment_config import ExperimentConfig
 
-    monkeypatch.setattr(
-        drift_driver, "load_experiment_config", lambda *_a, **_k: ExperimentConfig()
-    )
+    return ExperimentConfig(driver=dict(driver))
 
 
 def test_build_binds_knobs_from_driver_config(monkeypatch):
-    """build() reads experiment.toml [driver] (max_rounds, unit_prefix, …) when
-    the env vars are unset — the Part A wiring."""
-    from auspexai_tenant.experiment_config import ExperimentConfig
-
+    """build(cfg) reads the [driver] knobs (max_rounds, unit_prefix, …) from the
+    passed config when the env vars are unset."""
     for var in (
         "VIGILES_RUN_SECONDS",
         "VIGILES_ROUND_INTERVAL_SECONDS",
@@ -256,16 +252,15 @@ def test_build_binds_knobs_from_driver_config(monkeypatch):
         "VIGILES_UNIT_PREFIX",
     ):
         monkeypatch.delenv(var, raising=False)
-    cfg = ExperimentConfig(driver={"max_rounds": 7, "unit_prefix": "r9"})
-    monkeypatch.setattr(drift_driver, "load_experiment_config", lambda *_a, **_k: cfg)
-    spec = drift_driver.build()
+    cfg = _cfg(max_rounds=7, unit_prefix="r9")
+    spec = drift_driver.build(cfg)
     assert spec.max_rounds == 7  # [driver].max_rounds
     units = spec.next_batch(Counter(bucket=drift_driver._bucket), 0)  # rnd 0 → no cadence sleep
     assert all(u.unit_id.startswith("r9-") for u in units)  # [driver].unit_prefix
 
     # env still overrides the config.
     monkeypatch.setenv("VIGILES_MAX_ROUNDS", "3")
-    assert drift_driver.build().max_rounds == 3
+    assert drift_driver.build(cfg).max_rounds == 3
 
 
 # ---- long-horizon knobs (VIGILES_RUN_SECONDS / _ROUND_INTERVAL_SECONDS / ----
@@ -304,8 +299,7 @@ def test_duration_mode_keeps_issuing_past_stability_until_elapsed(monkeypatch):
     declines the round after the elapsed window (run_until outcome: exhausted)."""
     clock = _patch_clock(monkeypatch)
     monkeypatch.setenv("VIGILES_RUN_SECONDS", "100")
-    _no_config(monkeypatch)
-    spec = drift_driver.build()
+    spec = drift_driver.build(_cfg())
     agg = Counter(bucket=drift_driver._bucket)
 
     rounds = 0
@@ -332,7 +326,7 @@ def test_round_interval_sleeps_between_rounds(monkeypatch):
     Independent of duration mode (here: plain D6 stability mode)."""
     clock = _patch_clock(monkeypatch)
     monkeypatch.setenv("VIGILES_ROUND_INTERVAL_SECONDS", "300")
-    spec = drift_driver.build()
+    spec = drift_driver.build(_cfg())
     agg = Counter(bucket=drift_driver._bucket)
 
     assert spec.next_batch(agg, 0)
@@ -349,7 +343,7 @@ def test_interval_sleep_crossing_deadline_does_not_issue(monkeypatch):
     clock = _patch_clock(monkeypatch)
     monkeypatch.setenv("VIGILES_RUN_SECONDS", "100")
     monkeypatch.setenv("VIGILES_ROUND_INTERVAL_SECONDS", "60")
-    spec = drift_driver.build()
+    spec = drift_driver.build(_cfg())
     agg = Counter(bucket=drift_driver._bucket)
 
     assert spec.next_batch(agg, 0)  # t0 anchored here
@@ -363,7 +357,7 @@ def test_duration_mode_logs_drift_event_after_stability(monkeypatch, caplog):
     a NEW (probe, hash) pair appearing AFTER stability is logged loudly."""
     _patch_clock(monkeypatch)
     monkeypatch.setenv("VIGILES_RUN_SECONDS", "999999")
-    spec = drift_driver.build()
+    spec = drift_driver.build(_cfg())
     cond = spec.condition
     agg = Counter(bucket=drift_driver._bucket)
 
@@ -384,7 +378,7 @@ def test_duration_mode_logs_drift_event_after_stability(monkeypatch, caplog):
 
     # Pre-stability bucket growth (rounds 0→1 of a fresh run) is NOT an event.
     caplog.clear()
-    spec2 = drift_driver.build()
+    spec2 = drift_driver.build(_cfg())
     agg2 = Counter(bucket=drift_driver._bucket)
     with caplog.at_level(logging.WARNING, logger="vigiles.drift"):
         for panel in (STABLE_PANEL, [("p-greeting", "f" * 64), *STABLE_PANEL[1:]]):
@@ -396,7 +390,7 @@ def test_duration_mode_logs_drift_event_after_stability(monkeypatch, caplog):
 
 def test_max_rounds_env_override(monkeypatch):
     monkeypatch.setenv("VIGILES_MAX_ROUNDS", "120")
-    assert drift_driver.build().max_rounds == 120
+    assert drift_driver.build(_cfg()).max_rounds == 120
 
 
 def test_defaults_unchanged_when_env_unset(monkeypatch):
@@ -410,8 +404,7 @@ def test_defaults_unchanged_when_env_unset(monkeypatch):
 
     monkeypatch.setattr(drift_driver, "_sleep", _boom)
     monkeypatch.setattr(drift_driver, "_now", _boom)
-    _no_config(monkeypatch)
-    spec = drift_driver.build()
+    spec = drift_driver.build(_cfg())
     assert spec.max_rounds == drift_driver.MAX_ROUNDS == 50
     agg = Counter(bucket=drift_driver._bucket)
     for rnd in range(2):  # rnd > 0 exercises the (absent) cadence branch

@@ -54,11 +54,9 @@ import logging
 import os
 import time
 from collections.abc import Callable
-from pathlib import Path
 from typing import Any
 
 from auspexai_tenant import Counter, DriverSpec, Unit
-from auspexai_tenant.experiment_config import load_experiment_config
 
 log = logging.getLogger("vigiles.drift")
 
@@ -221,13 +219,13 @@ def _make_condition(*, duration_mode: bool = False, stable_rounds: int = STABLE_
     return converged
 
 
-def build() -> DriverSpec:
+def build(cfg) -> DriverSpec:
     """The DriverSpec factory named on `auspexai-tenant experiment run --driver`.
-    Reads the run knobs HERE (not at import) so each run binds its own config.
-    Source of truth: experiment.toml [driver] in the repo root (robust to cwd —
-    the driver runs from driver/); the legacy VIGILES_* env vars override any
-    value; unset everywhere reproduces D6 exactly."""
-    drv = load_experiment_config(Path(__file__).resolve().parent.parent).driver
+    The CLI passes the resolved ExperimentConfig (the `[driver]` knobs + the active
+    `--profile` already applied), so we read it from `cfg.driver` — no config
+    re-load. The legacy VIGILES_* env vars still override any value; unset
+    everywhere reproduces D6 exactly."""
+    drv = cfg.driver
 
     def _seconds(env_name: str, key: str) -> float:
         v = _env_seconds(env_name)
