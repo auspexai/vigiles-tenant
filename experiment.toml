@@ -49,3 +49,49 @@ run_seconds = 0                        # 0 = converge-on-stability; >0 = duratio
 max_rounds = 50                        # client-side round guard (raise for long-horizon: ~96 for 8h@300s)
 stable_rounds = 3                      # consecutive no-new-bucket rounds → converged
 unit_prefix = "d6"                     # unit-id prefix (a run-distinct tag)
+
+# ── Profiles (Phase-3 released-capability model — vigiles_onramp_phase3_design.md §3) ──
+# Named override-sets over the shared capability above. A profile's sub-tables
+# deep-merge onto the matching top-level table; select with `--profile <name>`
+# (auspexai-tenant >= the increment-1 release). The BASE config (no --profile)
+# stays = the keystone D6 config, so existing `build`/`launch` are byte-for-byte
+# unchanged. The active profile rides the AUSPEXAI_PROFILE env var into the
+# driver's own config re-load, so a profile's [driver] knobs reach drift_driver
+# with no per-driver wiring. NOTE: the `certified` marker + tier-gated selection
+# are Phase-3 increment 3 — these profiles carry ONLY real, enforced config today
+# (no unenforced safety markers — declarative-enforcement hygiene).
+
+[profiles.starter]
+# The declawed on-ramp face: benign fixed probe panel, converge-on-stability,
+# short, hash-only, repl-2. ≈ the base config today (Vigiles v0.1.0 already IS the
+# starter), stated explicitly so the promotion gate (increment 2) has a named
+# target to certify. Becomes the R1 no-code default.
+description = "On-ramp starter: benign fixed probes, converge-on-stability, hash-only, repl-2."
+
+[profiles.starter.experiment]
+sensitive_content_flags = []
+replication = 2
+duration_hours = 1
+
+[profiles.starter.driver]
+run_seconds = 0                        # converge-on-stability (NOT long-horizon)
+round_interval_seconds = 0
+max_rounds = 50
+stable_rounds = 3
+
+[profiles.research]
+# The research-frontier face: long-horizon duration mode, temporally-spaced rounds,
+# observation PAST stability (a changed consensus hash after stability = a drift
+# event). UNCERTIFIED — HEAD / R2+ only, runs under per-experiment ethics review;
+# NOT a no-code default (§3.2).
+description = "Research frontier: long-horizon duration mode, temporally-spaced rounds, observe past stability."
+
+[profiles.research.experiment]
+duration_hours = 8
+sensitive_content_flags = []           # bump to e.g. ["jailbreak"] for an adversarial drift panel (then needs an approver attestation)
+
+[profiles.research.driver]
+run_seconds = 28800                    # 8h duration mode (keep issuing rounds; observe drift past stability)
+round_interval_seconds = 300           # temporally-spaced (5-min cadence)
+max_rounds = 120                       # ~96 rounds for 8h@300s, with headroom
+stable_rounds = 3
