@@ -23,7 +23,7 @@ hf_repo = "unsloth/gemma-3-1b-it-GGUF"
 hf_filename = "gemma-3-1b-it-Q4_K_M.gguf"
 research_class = "behavioral_drift"    # §9 #48 — routine class → eligible for auto-approval at tier ≥ T2
 local_weights_required = true
-replication = 2                        # repl-2 → within_cell_exact (a REAL cross-check): the 2-mayhem fleet corroborates each unit. C14 (coord v0.1.70+) made repl-2 EXPRESSIBLE — no more rounding UP to repl-3 needing a 3rd worker (the exact wall this first real run was waiting on). Floor defaults to 2; vigiles-lab is T2 so the tier floor doesn't raise it. Both mayhems are T2 → eligible.
+replication = 1                        # repl-1 → process_only (no cross-worker hash check). C15 (2026-06-28): exact@2 is mismatched to a BYO/heterogeneous/async-update fleet — Ollama-version skew (e.g. 0.17.7 vs 0.18.2, same weights) byte-diverges replicas. And for a behavioral-DRIFT study the signal is each probe's consensus hash holding stable ACROSS ROUNDS on one deterministic worker (temp0 + seed), not within-round cross-worker agreement. Cross-worker corroboration returns as opt-in within_cell_tolerance@N once C7 ships.
 duration_hours = 1                     # → manifest expected_duration_hours
 sensitive_content_flags = []           # e.g. ["jailbreak"] → also needs an approver attestation
 research_goal = "Vigiles D6 — the first real tenant: a deterministic behavioral-drift probe panel run against a worker-served local LLM through the AuspexAI inference broker. Each work unit re-runs a fixed probe at temperature 0 with a pinned seed; the executor reduces the response to a sha256 anchor plus light lexical features (no raw text — Research Ethics §7 containment) and the adaptive driver folds the per-probe consensus hashes into a Counter, converging once every probe's consensus response holds stable across consecutive rounds. Exercises the full local-LLM execution path (W-S model serving + sandbox inference broker) and the persisted, Rekor-anchored result-set attestation end-to-end."
@@ -66,11 +66,11 @@ unit_prefix = "d6"                     # unit-id prefix (a run-distinct tag)
 # short, hash-only, repl-2. ≈ the base config today (Vigiles v0.1.0 already IS the
 # starter), stated explicitly so the promotion gate (increment 2) has a named
 # target to certify. Becomes the R1 no-code default.
-description = "On-ramp starter: benign fixed probes, converge-on-stability, hash-only, repl-2."
+description = "On-ramp starter: benign fixed probes, converge-on-stability, hash-only, repl-1 (process_only — C15)."
 
 [profiles.starter.experiment]
 sensitive_content_flags = []
-replication = 2
+replication = 1
 duration_hours = 1
 
 [profiles.starter.driver]
