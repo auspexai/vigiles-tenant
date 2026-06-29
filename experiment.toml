@@ -38,6 +38,108 @@ kind = "builtin_hash_agreement"
 [work_unit_source]
 kind = "static"                        # driver-fed; tarball coords optional
 
+# ── Feature schema (D16.1 — the self-describing interpretability standard) ──
+# Every feature the executor emits is declared HERE, in the SIGNED manifest,
+# before any data exists: its meaning, §7-safe type + bounds, what a change
+# implies, its role (feature authority), and how replicas are compared for
+# consensus (the C7 tolerance envelope). The coordinator validates this at submit
+# and ENFORCES it at result ingest — an undeclared / out-of-bounds field is
+# rejected (§7), so under containment the declared set IS the entire
+# interpretability surface (raw outputs are never retained). Declaring it bumps
+# schema_version → "0.3" automatically and is REQUIRED for a certified/citable
+# experiment. Keyed by the dotted result-payload path the executor emits
+# (executor.py run_one); load_verified surfaces it as the column data dictionary.
+# This block is the reference declaration a new tenant copies (design §8).
+
+[feature_schema."schema"]
+meaning = "result schema identifier"
+kind = "categorical"
+role = "provenance"
+change_means = "the executor's result schema version changed"
+categories = ["vigiles-drift-probe/v0"]
+
+[feature_schema."probe_id"]
+meaning = "which fixed probe produced this row"
+kind = "categorical"
+role = "key"                           # the primary drift/comparison join coordinate
+change_means = "a different probe produced this row"
+categories = ["p-greeting", "p-instruction", "p-refusal"]
+
+[feature_schema."response_sha256"]
+meaning = "SHA-256 of the raw model output — the authoritative byte-level drift anchor"
+kind = "hash"
+role = "anchor"
+algorithm = "sha256"
+change_means = "ANY change = output bytes differed, incl. reordering/whitespace the lexical features cannot see"
+comparison = { rule = "exact" }
+
+[feature_schema."response_chars"]
+meaning = "length of the raw response in characters"
+kind = "count"
+role = "summary"
+unit = "characters"
+range = { min = 0 }
+change_means = "the output got longer or shorter"
+
+[feature_schema."eval_count"]
+meaning = "backend-reported completion tokens generated"
+kind = "count"
+role = "summary"
+unit = "tokens"
+range = { min = 0 }
+change_means = "the model emitted a different number of completion tokens"
+
+[feature_schema."lexical.tokens"]
+meaning = "whitespace-token count of the response"
+kind = "count"
+role = "summary"
+unit = "whitespace_tokens"
+range = { min = 0 }
+change_means = "the response contains more or fewer whitespace tokens"
+
+[feature_schema."lexical.unique_tokens"]
+meaning = "distinct whitespace tokens in the response"
+kind = "count"
+role = "summary"
+unit = "whitespace_tokens"
+range = { min = 0 }
+change_means = "the response's distinct-token count changed"
+
+[feature_schema."lexical.type_token_ratio"]
+meaning = "unique tokens / total tokens — lexical diversity"
+kind = "numeric"
+role = "summary"
+unit = "ratio"
+range = { min = 0.0, max = 1.0 }
+valid_when = { field = "lexical.tokens", op = ">=", value = 5 }
+invariant_to = ["token_order", "whitespace", "punctuation"]
+change_means = "vocabulary richness shifted; does NOT capture reordering or formatting drift"
+comparison = { rule = "numeric", rel = 0.05 }
+
+[feature_schema."lexical.top_tokens"]
+meaning = "the top-8 tokens by count"
+kind = "set"
+role = "summary"
+element_kind = "categorical"
+max_cardinality = 8
+invariant_to = ["token_order"]
+change_means = "the most-frequent vocabulary changed; §7 boundary — carries token fragments (certify-gate review)"
+comparison = { rule = "set_jaccard", min = 0.9 }
+
+[feature_schema."model.id"]
+meaning = "the model id the worker served"
+kind = "categorical"
+role = "provenance"
+categories = ["gemma-3-1b-it-q4"]
+change_means = "a different model produced this row — stratify or exclude"
+
+[feature_schema."model.gguf_sha256"]
+meaning = "SHA-256 of the served GGUF weights"
+kind = "hash"
+role = "provenance"
+algorithm = "sha256"
+change_means = "the served weights differ — a provenance mismatch"
+
 [driver]
 entrypoint = "drift_driver:build"      # the DriverSpec factory (module:attr)
 path = "driver"                        # dir holding drift_driver.py → on sys.path, so `run`/`launch` resolve it from the repo root (no cd)
