@@ -168,11 +168,11 @@ unit_prefix = "d6"                     # unit-id prefix (a run-distinct tag)
 # short, hash-only, repl-2. ≈ the base config today (Vigiles v0.1.0 already IS the
 # starter), stated explicitly so the promotion gate (increment 2) has a named
 # target to certify. Becomes the R1 no-code default.
-description = "On-ramp starter: benign fixed probes, converge-on-stability, hash-only, repl-1 (process_only — C15)."
+description = "On-ramp starter: benign fixed probes, converge-on-stability, within_cell_tolerance@2 (C7 — version-skew-tolerant cross-worker corroboration; the reducer is inherited from the base)."
 
 [profiles.starter.experiment]
 sensitive_content_flags = []
-replication = 1
+replication = 2                        # C7: within_cell_tolerance@2 (was repl-1/process_only, the C15 stopgap). Reducer inherited from the base.
 duration_hours = 1
 
 [profiles.starter.driver]
