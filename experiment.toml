@@ -23,7 +23,7 @@ hf_repo = "unsloth/gemma-3-1b-it-GGUF"
 hf_filename = "gemma-3-1b-it-Q4_K_M.gguf"
 research_class = "behavioral_drift"    # §9 #48 — routine class → eligible for auto-approval at tier ≥ T2
 local_weights_required = true
-replication = 1                        # repl-1 → process_only (no cross-worker hash check). C15 (2026-06-28): exact@2 is mismatched to a BYO/heterogeneous/async-update fleet — Ollama-version skew (e.g. 0.17.7 vs 0.18.2, same weights) byte-diverges replicas. And for a behavioral-DRIFT study the signal is each probe's consensus hash holding stable ACROSS ROUNDS on one deterministic worker (temp0 + seed), not within-round cross-worker agreement. Cross-worker corroboration returns as opt-in within_cell_tolerance@N once C7 ships.
+replication = 2                        # C7 (2026-06-29): within_cell_tolerance@2 — cross-worker corroboration restored. The C15 stopgap was repl-1/process_only because exact@2 byte-diverges on Ollama-version skew (0.17.7/0.18.2, same weights); tolerance (see [reducer]) treats a skewed worker as an OUTLIER, not a consensus-blocker, so ≥2 of the (up to 3) fleet workers corroborate WITHIN the declared envelope while drift still shows as the consensus signal across rounds.
 duration_hours = 1                     # → manifest expected_duration_hours
 sensitive_content_flags = []           # e.g. ["jailbreak"] → also needs an approver attestation
 research_goal = "Vigiles D6 — the first real tenant: a deterministic behavioral-drift probe panel run against a worker-served local LLM through the AuspexAI inference broker. Each work unit re-runs a fixed probe at temperature 0 with a pinned seed; the executor reduces the response to a sha256 anchor plus light lexical features (no raw text — Research Ethics §7 containment) and the adaptive driver folds the per-probe consensus hashes into a Counter, converging once every probe's consensus response holds stable across consecutive rounds. Exercises the full local-LLM execution path (W-S model serving + sandbox inference broker) and the persisted, Rekor-anchored result-set attestation end-to-end."
@@ -33,7 +33,7 @@ prompt_characteristics = "A small fixed panel of neutral instruction-following p
 command = ["python", "executor.py"]    # run inside pkg/; package_sha256 is digested over pkg/
 
 [reducer]
-kind = "builtin_hash_agreement"
+kind = "builtin_within_cell_tolerance"   # C7: replicas agree WITHIN each feature's `comparison` envelope (declared below), not byte-for-byte; the exact response_sha256 anchor strengthens but never blocks. Omit tolerance_features ⇒ every non-`exact` comparison feature is in the agreement predicate.
 
 [work_unit_source]
 kind = "static"                        # driver-fed; tarball coords optional
