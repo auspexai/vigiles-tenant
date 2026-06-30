@@ -160,63 +160,58 @@ STABLE_PANEL = [
 
 
 def test_driver_converges_on_hash_stability():
-    """run_until calls `condition` after EVERY drain — mid-round included
-    (driver.py poll loop), not once per round. Convergence must land only at
-    the round boundary after STABLE_ROUNDS stable completed rounds: baseline
-    round 0, stable rounds 1-3 → converged at the end of round 3."""
-    spec = drift_driver.build(_cfg())
-    cond = spec.condition
+    """Observe-all model: the raw run_until path calls `condition` exactly ONCE per
+    round (a clean boundary — never mid-round). Convergence lands after STABLE_ROUNDS
+    consecutive rounds with no NEW (probe, response) bucket: round 0 introduces the
+    buckets, rounds 1..STABLE_ROUNDS add none → converged on the last."""
+    cond = drift_driver.build(_cfg()).condition
     agg = Counter(bucket=drift_driver._bucket)
-
-    boundary_verdicts = []
-    for _round in range(4):
+    verdicts = []
+    for _round in range(drift_driver.STABLE_ROUNDS + 1):
         for p, h in STABLE_PANEL:
-            agg.fold(_consensus(p, h))
-            mid = cond(agg)  # the real per-drain call pattern
-            if sum(agg.counts.values()) % len(drift_driver.PROBES) != 0:
-                assert mid is False, "verdict on a partial round"
-        boundary_verdicts.append(cond(agg))
-    assert boundary_verdicts == [False, False, False, True]
+            agg.fold(_consensus(p, h))  # re-observe the same panel — no new bucket after round 0
+        verdicts.append(cond(agg))  # one call per round boundary
+    assert verdicts == [False] * drift_driver.STABLE_ROUNDS + [True]
 
 
-def test_driver_never_converges_mid_round_on_no_progress_polls():
-    """D6 regression (2026-06-10): the run finalized with r4-p-refusal-r1 still
-    pending — repeated no-progress polls ticked the streak inside one round.
-    With a partial round folded, any number of condition calls must stay False."""
-    spec = drift_driver.build(_cfg())
-    cond = spec.condition
+def test_stably_divergent_probe_converges():
+    """Observe-all (C7 Inc 3 tail): a probe that yields TWO responses every round —
+    a STABLE divergence (an Ollama-version split, or a worker that collapses to empty
+    output on some replicas) — is a valid stable state, NOT a consensus-blocker. Once
+    the observed set stops growing the panel converges, exactly like a single-response
+    probe. (This is the case that hung the driver under the old consensus model.)"""
+    cond = drift_driver.build(_cfg()).condition
     agg = Counter(bucket=drift_driver._bucket)
+    panel = [
+        ("p-greeting", "a" * 64),  # greeting diverges across two workers...
+        ("p-greeting", "z" * 64),  # ...both responses observed every round
+        ("p-refusal", "b" * 64),
+        ("p-instruction", "c" * 64),
+    ]
+    verdicts = []
+    for _round in range(drift_driver.STABLE_ROUNDS + 1):
+        for p, h in panel:
+            agg.fold(_consensus(p, h))
+        verdicts.append(cond(agg))
+    assert verdicts == [False] * drift_driver.STABLE_ROUNDS + [True]
 
-    # Round 0 completes (baseline)...
-    for p, h in STABLE_PANEL:
-        agg.fold(_consensus(p, h))
-    assert cond(agg) is False
-    # ...round 1 folds only 2 of 3 probes, then the driver polls in a loop.
-    for p, h in STABLE_PANEL[:2]:
-        agg.fold(_consensus(p, h))
-    for _poll in range(drift_driver.STABLE_ROUNDS * 5):
-        assert cond(agg) is False, "streak ticked on a no-progress poll"
-    # Completing rounds 1-3 with no new bucket converges exactly on schedule.
-    agg.fold(_consensus(*STABLE_PANEL[2]))
-    assert cond(agg) is False  # round 1: streak 1
-    for _round in (2, 3):
+
+def test_repeated_observations_of_same_response_dont_perturb_convergence():
+    """Observe-all folds EVERY replica: multiple agreeing replicas of the same
+    (probe, response) re-increment a bucket's count but add no DISTINCT bucket, so
+    they don't perturb the streak — convergence depends only on the distinct
+    observed-response SET. (This is also why double-folding on crash-resume is
+    harmless: it can only re-increment an existing bucket.)"""
+    cond = drift_driver.build(_cfg()).condition
+    agg = Counter(bucket=drift_driver._bucket)
+    verdicts = []
+    for _round in range(drift_driver.STABLE_ROUNDS + 1):
         for p, h in STABLE_PANEL:
-            agg.fold(_consensus(p, h))
-        verdict = cond(agg)
-    assert verdict is True
-
-
-def test_driver_holds_verdict_when_repolled_at_same_boundary():
-    """A completed-round boundary judged twice (poll with no new folds) must
-    hold its verdict without advancing the streak."""
-    spec = drift_driver.build(_cfg())
-    cond = spec.condition
-    agg = Counter(bucket=drift_driver._bucket)
-    for p, h in STABLE_PANEL:
-        agg.fold(_consensus(p, h))
-    # Baseline round judged repeatedly: streak must stay 0, never converge.
-    for _ in range(drift_driver.STABLE_ROUNDS * 5):
-        assert cond(agg) is False
+            agg.fold(_consensus(p, h))  # replica 1
+            agg.fold(_consensus(p, h))  # replica 2 (agrees) — same bucket
+            agg.fold(_consensus(p, h))  # a re-fold (e.g. resume) — still one distinct bucket
+        verdicts.append(cond(agg))
+    assert verdicts == [False] * drift_driver.STABLE_ROUNDS + [True]
 
 
 def test_driver_resets_streak_on_drift():

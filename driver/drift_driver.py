@@ -150,68 +150,62 @@ def _make_next_batch(
 
 
 def _make_condition(*, duration_mode: bool = False, stable_rounds: int = STABLE_ROUNDS):
-    """Converged once the set of distinct (probe, hash) buckets has not grown
-    for STABLE_ROUNDS consecutive COMPLETED ROUNDS — every probe's consensus
-    response has held stable.
+    """Converged once the SET of distinct (probe, observed-response) buckets has not
+    grown for STABLE_ROUNDS consecutive rounds — every probe's OBSERVED-response set
+    has held stable.
 
-    In duration mode (VIGILES_RUN_SECONDS) the verdict is ALWAYS False — a
-    longitudinal run keeps observing past stability; the duration deadline in
-    `next_batch` ends the run instead. The streak machinery still runs so that
-    a NEW (probe, hash) pair appearing after the panel had stabilized is
-    recognized and logged loudly as a drift event.
+    Observe-all model (C7 Inc 3 tail, `include="raw"`): every worker replica is a
+    valid observation and gets a `_bucket`. So a STABLY-divergent probe — the same N
+    responses across the fleet every round (e.g. an Ollama-version split, or a model
+    that collapses to empty on some workers) — is a STABLE state and converges; a
+    probe that yields a NEW response resets the streak (behavioral drift, the signal).
+    Divergence is data, never a blocker.
 
-    Round-boundary gating (D6 finding, 2026-06-10): `run_until` invokes
-    `condition` after EVERY poll drain — including mid-round with only part of
-    the panel folded, and on no-progress polls. A streak that ticks per
-    invocation therefore converges early (D6 finalized with r4-p-refusal-r1
-    still pending). The aggregate is the only input, so the round boundary is
-    derived from the fold count: each round folds exactly one consensus result
-    per probe, so `total // len(PROBES)` is the number of completed rounds and
-    `total % len(PROBES) != 0` means mid-round — never judge there. The streak
-    advances at most once per newly completed round.
+    The raw `run_until` path invokes `condition` exactly ONCE per round (at the top of
+    its loop — a clean round boundary; it never calls condition mid-round, since the
+    round completes on the coordinator's all-units-terminal signal, not a fold count).
+    So the streak ticks per call. This REPLACES the old consensus fold-count parity
+    gating (`total % len(PROBES)`), which no longer holds: a raw round folds a VARIABLE
+    number of observations (replicas × probes, fewer on capacity-collapse), so the
+    boundary can't be derived from the fold count.
+
+    Bucket counts only accumulate (a running Counter; buckets are never removed), so
+    `len(agg.counts)` is monotonic — equal across a round ⇒ no new response ⇒ stable.
+
+    In duration mode the verdict is ALWAYS False (longitudinal observation past
+    stability); the streak machinery still runs to log a drift event loudly.
     """
     state: dict[str, Any] = {
-        "judged_rounds": 0,
         "last_distinct": -1,
         "streak": 0,
         "stable": False,  # stability reached and not since broken by drift
-        "known": frozenset(),  # buckets seen at the last judged boundary
+        "known": frozenset(),  # buckets seen at the last round boundary
     }
 
     def converged(agg: Counter) -> bool:
-        total = sum(agg.counts.values())
-        rounds_done, mid_round = divmod(total, len(PROBES))
-        if rounds_done == 0 or mid_round:
-            return False  # nothing or a partial round folded — no verdict
-        if rounds_done == state["judged_rounds"]:
-            # Same boundary as the last judgment (e.g. a no-progress poll):
-            # hold the verdict, never re-tick the streak.
-            return not duration_mode and state["streak"] >= stable_rounds
-        state["judged_rounds"] = rounds_done
         distinct = len(agg.counts)
         if distinct == state["last_distinct"]:
             state["streak"] += 1
             if state["streak"] >= stable_rounds and not state["stable"]:
                 state["stable"] = True
                 log.info(
-                    "panel stable at round %d: no new (probe, hash) pair for %d rounds",
-                    rounds_done,
+                    "panel stable: no new (probe, response) bucket for %d rounds (%d buckets)",
                     stable_rounds,
+                    distinct,
                 )
         else:
             new = sorted(set(agg.counts) - state["known"])
             if state["stable"]:
-                # The longitudinal payoff: the panel had stabilized, and a
-                # fixed probe+seed just produced a response hash never seen
-                # before — behavioral drift, observed live.
+                # The longitudinal payoff: the panel had stabilized, and a fixed
+                # probe+seed just produced a response never observed before —
+                # behavioral drift, observed live.
                 log.warning(
-                    "DRIFT EVENT at round %d: %d new (probe, hash) pair(s) after stability: %s",
-                    rounds_done,
+                    "DRIFT EVENT: %d new (probe, response) bucket(s) after stability: %s",
                     len(new),
                     new,
                 )
                 state["stable"] = False
-            state["streak"] = 0  # new (probe, hash) bucket appeared — drift
+            state["streak"] = 0  # a new (probe, response) bucket appeared — drift
             state["last_distinct"] = distinct
         state["known"] = frozenset(agg.counts)
         return not duration_mode and state["streak"] >= stable_rounds
@@ -243,5 +237,9 @@ def build(cfg) -> DriverSpec:
         condition=_make_condition(duration_mode=run_seconds > 0, stable_rounds=stable_rounds),
         next_batch=_make_next_batch(run_seconds, interval, prefix),
         reduce=Counter(bucket=_bucket),
+        # C7 Inc 3 tail: observe EVERY replica as a valid observation (a divergent or
+        # empty-output worker is data, not a blocker); the round completes on the
+        # coordinator's all-units-terminal signal (wait-for-terminal), not a target.
+        include="raw",
         max_rounds=max_rounds,
     )
