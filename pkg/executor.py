@@ -40,6 +40,7 @@ Result payload shape (vigiles-drift-probe/v0):
 from __future__ import annotations
 
 import hashlib
+import unicodedata
 from collections import Counter
 
 from lite import InferenceClient, LiteHarness
@@ -47,12 +48,36 @@ from lite import InferenceClient, LiteHarness
 TOP_TOKENS = 8
 
 
+def _strip_surrounding_punct(token: str) -> str:
+    """Drop leading/trailing UNICODE punctuation from a token (every category
+    Pc/Pd/Pe/Pf/Pi/Po/Ps — ASCII commas/periods AND the em-dashes, curly quotes,
+    and ellipses LLMs emit constantly). Interior marks (the apostrophe in "i'm",
+    dots in "u.s") are preserved."""
+    lo, hi = 0, len(token)
+    while lo < hi and unicodedata.category(token[lo])[0] == "P":
+        lo += 1
+    while hi > lo and unicodedata.category(token[hi - 1])[0] == "P":
+        hi -= 1
+    return token[lo:hi]
+
+
 def _tokenize(text: str) -> list[str]:
-    """Lowercase whitespace tokenization — deliberately simple and stable.
-    The token distribution is the cross-round drift feature (compared
-    tenant-side); fancier tokenization buys nothing for stability detection
-    and risks cross-version nondeterminism."""
-    return text.lower().split()
+    """Lowercase tokenization, SURROUNDING punctuation trimmed for stability.
+
+    Whitespace split, then strip leading/trailing punctuation from each token and
+    drop empties. The trimming is load-bearing for cross-version consensus: the C7
+    proof run saw "blue, red, yellow" diverge under within_cell_tolerance ONLY
+    because a comma attached to a different word across Ollama versions
+    (`red,`/`yellow,` vs `blue,`/`yellow`) — identical behavior must produce
+    identical tokens, or a trivial tokenization artifact masquerades as drift.
+    Unicode-aware so curly quotes / em-dashes don't reintroduce the same brittleness.
+    Still deterministic and a pure function of the text."""
+    out: list[str] = []
+    for raw in text.lower().split():
+        tok = _strip_surrounding_punct(raw)
+        if tok:
+            out.append(tok)
+    return out
 
 
 def run_one(unit: dict, models_dir) -> dict:

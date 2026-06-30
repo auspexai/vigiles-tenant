@@ -136,6 +136,22 @@ def _consensus(probe_id: str, digest: str) -> dict:
     return {"payload": {"probe_id": probe_id, "response_sha256": digest}}
 
 
+def test_tokenize_trims_surrounding_punctuation():
+    """C7: identical text must tokenize identically regardless of where a comma
+    attaches across serving versions — the proof-run false-divergence where
+    "blue, red, yellow" diverged only because the comma moved. Interior marks are
+    preserved; pure-punctuation tokens dropped; Unicode punctuation handled too."""
+    # the exact proof-run case: same response, comma on a different word → identical now
+    assert executor._tokenize("blue, red, yellow") == ["blue", "red", "yellow"]
+    assert executor._tokenize("blue ,red, yellow,") == ["blue", "red", "yellow"]
+    # interior punctuation preserved (apostrophes, interior dots)
+    assert executor._tokenize("I'm Gemma.") == ["i'm", "gemma"]
+    # Unicode punctuation (curly quotes, em-dash, ellipsis) trimmed, not kept
+    assert executor._tokenize("“hello” — world…") == ["hello", "world"]
+    # a pure-punctuation token drops out entirely
+    assert executor._tokenize("ok ... !!") == ["ok"]
+
+
 STABLE_PANEL = [
     ("p-greeting", "a" * 64),
     ("p-refusal", "b" * 64),
