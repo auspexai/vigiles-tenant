@@ -181,6 +181,33 @@ round_interval_seconds = 0
 max_rounds = 50
 stable_rounds = 3
 
+[profiles.calibration]
+# C7 envelope calibration (c7_calibration_campaign.md §3, Phase 0 launched 2026-07):
+# a fixed-VOLUME raw-spread measurement, not a drift study. Every unit executes on
+# EVERY fleet config (repl = N_configs = 3) so each unit yields direct same-cell
+# cross-config comparisons; the analysis reads the RAW per-replica feature payloads
+# offline (pairwise per-feature deltas) — the in-manifest comparison envelope stays
+# the uncalibrated placeholder and is deliberately NOT an analysis input. Phase-0
+# deliverable = the within-band (0.17.7↔0.18.2 mayhem-pair) noise floor; cross-band
+# (↔0.30.11) deltas feed ONLY the §7 decision-gate memo — never the envelope,
+# pre-ratification. Probe panel / seed / num_predict inherited UNCHANGED: calibration
+# must measure the same panel the drift study runs, so the noise floor transfers.
+description = "C7 tolerance-envelope calibration: fixed-volume (25 rounds × 3 probes), repl-3 all-config raw-spread collection; offline pairwise delta analysis per c7_calibration_campaign.md; placeholder envelope not consulted."
+
+[profiles.calibration.experiment]
+label = "vigiles-c7-calibration"
+replication = 3                        # target = N_configs (campaign §3): the same unit executes on every config. C14 default floor (2) lets a unit settle if one config is briefly unavailable — that unit just contributes fewer cross-pairs.
+duration_hours = 1
+research_goal = "C7 tolerance-envelope calibration (spec: c7_calibration_campaign.md). Characterize the per-feature legitimate cross-worker noise floor by re-running the fixed Vigiles probe panel at replication = N_configs, so every work unit executes on every fleet config (linux/aarch64 Ollama 0.17.7, linux/aarch64 Ollama 0.18.2, darwin/arm64 Ollama 0.30.11). Analysis consumes the raw per-replica feature payloads offline: pairwise per-feature deltas, stratified within-band vs cross-band, per probe (§8 noise-vs-signal criterion applied per delta). Fixed volume — 25 rounds x 3 probes = 75 units (~225 executions); no early convergence (stable_rounds unreachable); stops at max_rounds. Output feeds the calibrated envelope + the Phase-0->Phase-1 decision-gate memo (0.30.11 cell-vs-drift)."
+prompt_characteristics = "The unchanged fixed Vigiles probe panel (greeting, arithmetic, enumeration) at temperature 0 with the pinned seed — identical inputs to the drift study; only the replication, volume, and analysis intent differ."
+
+[profiles.calibration.driver]
+run_seconds = 0                        # NOT duration mode — fixed round count below
+round_interval_seconds = 0             # back-to-back; calibration measures cross-worker spread, not temporal drift
+max_rounds = 25                        # THE volume knob: 25 rounds × 3 probes = 75 units × 3 replicas ≈ 225 executions (campaign §3)
+stable_rounds = 1000                   # deliberately unreachable — a fixed-volume run must not converge-on-stability early; it stops at max_rounds
+unit_prefix = "cal"
+
 [profiles.research]
 # The research-frontier face: long-horizon duration mode, temporally-spaced rounds,
 # observation PAST stability (a changed consensus hash after stability = a drift
