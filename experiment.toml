@@ -224,3 +224,40 @@ run_seconds = 28800                    # 8h duration mode (keep issuing rounds; 
 round_interval_seconds = 300           # temporally-spaced (5-min cadence)
 max_rounds = 120                       # ~96 rounds for 8h@300s, with headroom
 stable_rounds = 3
+
+[profiles.contrast_model]
+# C7 §5 rejection validation — "the envelope must still BITE" (c7_calibration_campaign.md §5;
+# c7_phase0_decision_memo.md §3). A deliberately DIFFERENT model (Qwen2.5-0.5B-Instruct) on the
+# UNCHANGED probe panel at temp0 / pinned seed, like the drift study. Both mayhems serve the same
+# Qwen build, so they agree WITH EACH OTHER (byte-identical, like the within-band gemma floor); the
+# rejection test is OFFLINE, mirroring the Phase-0 cross-band method — compare Qwen's per-probe
+# features to the gemma-3-1b-it-q4 reference and confirm every delta EXCEEDS the tightened envelope
+# (type_token_ratio rel 0.02, top_tokens set_jaccard 0.9). Fixed tiny volume (3 rounds), minutes.
+# The §5 temp>0 contrast is DEFERRED to v0.2 M1 seeded-sampling (inference_determinism_scoping_memo.md):
+# the broker forbids temp>0 today, so a different-MODEL divergence is the runnable bite-test now.
+description = "C7 §5 rejection validation: a deliberately different model (Qwen2.5-0.5B-Instruct) on the unchanged panel; offline cross-model deltas must exceed the tightened envelope."
+
+[profiles.contrast_model.experiment]
+label = "vigiles-c7-contrast-model"
+model_id = "qwen2.5-0.5b-instruct-q4"                     # distinct routing id → distinct served handle auspex-qwen2.5-0.5b-instruct-q4
+model_version = "1.0"
+hf_repo = "bartowski/Qwen2.5-0.5B-Instruct-GGUF"          # ungated (apache-2.0); lazy auto-acquire pulls it in-line on a worker that lacks it
+hf_filename = "Qwen2.5-0.5B-Instruct-Q4_K_M.gguf"         # verified present in the repo tree 2026-07-02
+replication = 2                                           # mayhem-pair floor; the Qwen replicas agree with each other (same model) — the divergence tested is cross-MODEL, offline vs the gemma reference
+duration_hours = 1
+research_goal = "C7 §5 rejection validation (c7_calibration_campaign.md §5). Run the UNCHANGED Vigiles probe panel (greeting, arithmetic, enumeration) at temperature 0 / pinned seed against a deliberately DIFFERENT model (Qwen2.5-0.5B-Instruct) to prove the calibration-tightened tolerance envelope still FLAGS genuine divergence. Analysis is offline and mirrors the Phase-0 cross-band method: compare Qwen's per-probe light features (type_token_ratio, top_tokens, counts) to the gemma-3-1b-it-q4 reference from the drift/calibration study and confirm every delta exceeds the tightened envelope (type_token_ratio rel 0.02, top_tokens set_jaccard 0.9). Fixed tiny volume (3 rounds x 3 probes)."
+prompt_characteristics = "The unchanged fixed Vigiles probe panel at temperature 0 / pinned seed — identical inputs to the drift study; only the served model differs (Qwen2.5-0.5B-Instruct in place of gemma-3-1b-it-q4)."
+
+[profiles.contrast_model.driver]
+run_seconds = 0                        # NOT duration mode
+round_interval_seconds = 0             # back-to-back
+max_rounds = 3                         # tiny fixed volume: 3 rounds x 3 probes = 9 units x repl-2 ≈ 18 executions (minutes)
+stable_rounds = 1000                   # unreachable — fixed-volume, stops at max_rounds
+unit_prefix = "ctr"
+
+# The different model changes the ONLY model-pinned category in the feature schema. Without this
+# override the coordinator REJECTS every Qwen result at ingest (out-of-category model.id, §7
+# enforcement). The recursive profile deep-merge reaches this nested table; the other model.id
+# schema fields (meaning/kind/role/change_means) are inherited unchanged.
+[profiles.contrast_model.feature_schema."model.id"]
+categories = ["qwen2.5-0.5b-instruct-q4"]
