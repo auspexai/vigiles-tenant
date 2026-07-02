@@ -175,6 +175,25 @@ sensitive_content_flags = []
 replication = 2                        # C7: within_cell_tolerance@2 (was repl-1/process_only, the C15 stopgap). Reducer inherited from the base.
 duration_hours = 1
 
+# D16.2 §8: the certified starter ships a COMPLETE pre-registered design — the
+# worked exemplar a new researcher copies. HONEST framing: a converge-on-stability
+# run is DESCRIPTIVE (it establishes a stability baseline), and this block says
+# so; only the research profile (long-horizon, observe-past-stability) below
+# pre-registers a drift HYPOTHESIS. The comparison envelope is NOT re-declared:
+# `features` names declared feature_schema paths and the pre-registered envelope
+# IS each feature's `comparison` in this same signed manifest (nothing to drift).
+# The coordinator COSE-signs + Rekor-anchors this at submit → `design ≺ data`.
+[profiles.starter.pre_registration]
+hypothesis = "gemma-3-1b-it-q4's response to each fixed probe is stable across rounds at temperature 0 with a pinned seed (no within-session drift)."
+analysis_method = "per probe_id, compare the consensus feature vector round-over-round within the declared comparison envelope"
+features = ["lexical.type_token_ratio", "lexical.top_tokens", "response_sha256"]
+timescale = "intra_experiment_rounds"
+decision_rule = "drift IFF a probe's consensus vector moves outside the declared comparison envelope after convergence"
+expected_result = "descriptive stability baseline: no probe drifts; null = at least one probe drifts"
+stopping_rule = "converge-on-stability (stable_rounds=3), declared up front - not data-peeking-dependent"
+comparison_keys = ["probe_id"]
+min_replication = 2
+
 [profiles.starter.driver]
 run_seconds = 0                        # converge-on-stability (NOT long-horizon)
 round_interval_seconds = 0
@@ -218,6 +237,21 @@ description = "Research frontier: long-horizon duration mode, temporally-spaced 
 [profiles.research.experiment]
 duration_hours = 8
 sensitive_content_flags = []           # bump to e.g. ["jailbreak"] for an adversarial drift panel (then needs an approver attestation)
+
+# D16.2 §8: the research profile pre-registers the DRIFT hypothesis (the
+# confirmatory long-horizon study), in contrast to the starter's descriptive
+# baseline. Same referenced envelope; a changed analysis post-data is a signed
+# deviation record, never an edit.
+[profiles.research.pre_registration]
+hypothesis = "over a multi-hour horizon, at least one fixed probe's consensus response drifts (the serving stack, not the pinned weights, moves under the panel)."
+analysis_method = "per probe_id, track the consensus feature vector across temporally-spaced rounds; a post-stability change in the consensus hash or an envelope exit is a drift event"
+features = ["lexical.type_token_ratio", "lexical.top_tokens", "response_sha256"]
+timescale = "long_horizon"
+decision_rule = "drift IFF a probe's consensus vector exits the declared comparison envelope, or its consensus hash changes, after initial stability"
+expected_result = "at least one drift event over the 8h horizon; null = the panel stays stable throughout"
+stopping_rule = "fixed 8h duration (run_seconds=28800), declared up front - not data-peeking-dependent"
+comparison_keys = ["probe_id"]
+min_replication = 2
 
 [profiles.research.driver]
 run_seconds = 28800                    # 8h duration mode (keep issuing rounds; observe drift past stability)

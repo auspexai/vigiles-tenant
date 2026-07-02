@@ -1,6 +1,6 @@
 [project]
 name = "vigiles-tenant"
-version = "0.1.7"
+version = "0.1.8"
 description = "Vigiles — AuspexAI's first research tenant (behavioral drift)"
 readme = "README.md"
 # This bounds the AUTHORING/TEST env (it installs the SDK, which needs 3.11).
