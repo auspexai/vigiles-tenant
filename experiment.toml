@@ -114,7 +114,7 @@ range = { min = 0.0, max = 1.0 }
 valid_when = { field = "lexical.tokens", op = ">=", value = 5 }
 invariant_to = ["token_order", "whitespace", "punctuation"]
 change_means = "vocabulary richness shifted; does NOT capture reordering or formatting drift"
-comparison = { rule = "numeric", rel = 0.05 }
+comparison = { rule = "numeric", rel = 0.02 }   # C7 calibrated 2026-07-02: within-band floor 0.000 → 0.02 safety factor; §5 different-model contrast confirms it still bites (c7_phase0_decision_memo.md §6). Tightened from 0.05.
 
 [feature_schema."lexical.top_tokens"]
 meaning = "the top-8 tokens by count"
