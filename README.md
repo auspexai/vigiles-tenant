@@ -6,36 +6,52 @@ Vigiles is a sibling project to [Sentinel](https://github.com/jasongagne-git/sen
 
 ## Status
 
-**D6 package built (2026-06-09); first live run PROVEN (2026-06-20).** Vigiles is sequenced last in Phase 1 (per [Principles & Scope §5.3](https://github.com/auspexai/platform)) so the platform interfaces prove themselves against the synthetic test tenant before bending toward a real tenant's needs. The first experiment is **D6** — a deterministic behavioral-drift probe run against a worker-served local LLM. The minimal package + adaptive driver are in this repo; the live run needs a worker with inference serving enabled (`[inference] backend = "ollama"`) holding the declared model. The keystone run (`exp-_LtpfHNh`) completed at `replication = 2` with **0 divergence** — two independent workers produced byte-identical output at temperature 0 — confirming the cross-worker determinism the consensus check depends on.
+**LIVE — the certified, pre-registered starter on the open-beta network (2026-07).** The first experiment is **D6** — a deterministic behavioral-drift probe run against a worker-served local LLM; the minimal package + adaptive driver are in this repo, and the live run needs a worker with inference serving enabled (`[inference] backend = "ollama"`) holding the declared model.
+
+Two findings shaped the current design. The keystone run (`exp-_LtpfHNh`, 2026-06-20) proved two workers *can* produce byte-identical output at temperature 0 — but the first real fleet run (C15, 2026-06-28) proved they reliably **don't** across Ollama versions on a bring-your-own fleet. Corroboration therefore moved to **`within_cell_tolerance@2`**: replicas agree when their declared features fall within each feature's *calibrated comparison envelope* (`type_token_ratio rel ≤ 0.02`, `top_tokens` jaccard ≥ 0.9 — Phase-0-calibrated, locked by the starter's certificate); a version-skewed worker is a recorded **outlier**, never a silent consensus-blocker, and genuine divergence is recorded as data. The starter profile also ships a complete **pre-registered design** — hypothesis, analysis, and stopping rule are Rekor-anchored at submit, so every bundle proves `design ≺ data`.
 
 ## Layout
 
 - **`pkg/`** — the tenant package staged on the worker. `executor.py` runs one drift probe per work unit against the worker-served model through the AuspexAI inference broker (W-S, §9 #43) and reduces the response to a sha256 anchor + light lexical features (no raw text — Research Ethics §7 containment). It imports only the vendored `lite.py` (the SDK's stdlib-only `LiteHarness` + `InferenceClient`), so it runs under the worker sandbox's system Python with zero installs.
 - **`driver/drift_driver.py`** — the adaptive `run_until` driver. Re-runs a fixed probe panel each round at temperature 0 with a pinned seed and folds the per-probe consensus hashes into a `Counter`; converges once every probe's consensus response holds stable across consecutive rounds (a changed hash for a fixed probe+seed is the drift signal).
-- **`experiment.toml`** — the whole build. `[experiment]`/`[executor]`/`[reducer]` feed `auspexai-tenant experiment build pkg/` (SDK-generic; no per-tenant `build.py`), which validates the manifest and computes `executor.package_sha256` over the package files. `[driver]` feeds `experiment run`.
+- **`experiment.toml`** — the whole build. `[experiment]`/`[executor]`/`[reducer]` feed `auspexai-tenant experiment build pkg/` (SDK-generic; no per-tenant `build.py`), which validates the manifest and computes `executor.package_sha256` over the package files. `[driver]` feeds `experiment run`. It also declares the **`[feature_schema]`** (every emitted feature's meaning, §7-safe bounds, and its consensus `comparison` envelope — the D16.1 self-describing standard), named **`[profiles.*]`** override-sets (`starter` / `research` / `calibration` / `contrast_model`), and the **`[profiles.starter.pre_registration]`** / **`[profiles.research.pre_registration]`** blocks — the pre-registered designs (the envelope is *referenced* from the feature schema, never re-declared). This file is the reference declaration a new tenant copies.
 - **`tests/`** — offline executor (vs a fake broker) + driver-convergence tests; no live coordinator or model.
 
 ### Running D6
 
 Knobs live in [`experiment.toml`](experiment.toml): `[experiment]`/`[executor]`/`[reducer]` feed the build, `[driver]` feeds the run. Requires `auspexai-tenant>=0.5.9` (`experiment build`). The legacy `VIGILES_*` env vars still override the *driver* knobs (see [Long-horizon runs](#long-horizon-runs)).
 
+The whole lifecycle is one command (build → submit → await approval → drive):
+
+```sh
+auspexai-tenant experiment launch --profile starter
+```
+
+`--profile starter` selects the certified, pre-registered configuration; Ctrl-C aborts the run cleanly (server-side too — pass `--resumable` to instead leave it running and resume with `experiment run latest`). Or step-by-step:
+
 ```sh
 # 1. build pkg/manifest.json from experiment.toml — the label gets a unique
 #    suffix stamped on, so re-building then submitting never 409s
-auspexai-tenant experiment build pkg/
+auspexai-tenant experiment build pkg/ --profile starter
 # 2. one step: sign + upload the package + create the experiment
 #    (workers AUTO-FETCH + verify the package, #40a — no staging)
 auspexai-tenant experiment submit pkg/ --key <vigiles_key>
-# 3. maintainer approves in the console; then drive it — 'latest' resolves the
+# 3. certified runs auto-clear; then drive it — 'latest' resolves the
 #    experiment you just submitted, --driver/--journal default from [driver]
-cd driver && auspexai-tenant experiment run latest --key <vigiles_key> --doorbell
+auspexai-tenant experiment run latest --key <vigiles_key> --doorbell
 ```
 
-Determinism is consensus-critical: the worker's inference broker pins `temperature=0` + the seed and authorizes only the manifest's exact model id, so replicas of a unit produce byte-identical payloads (the hash-agreement precondition). The manifest declares the model with `local_weights_required`, which routes units only to workers that hold + serve it.
+Generation is deterministic per unit: the worker's inference broker pins `temperature=0` + the seed and authorizes only the manifest's exact model id (a `temperature>0` manifest is rejected at submit today; seeded sampling arrives with manifest v0.2-M1). **Consensus, however, is tolerance-based, not byte-based**: identical prompts on different Ollama versions can produce byte-different output, so replicas agree when their declared features fall within the calibrated `comparison` envelope; the attested consensus value is a deterministic *representative* of the agreeing set, and outliers are recorded in the divergence index. The manifest declares the model with `local_weights_required`, which routes units only to workers that hold + serve it.
+
+If your analysis genuinely changes after you've seen data, declare it — append-only and signed, never an edit of the pre-registration:
+
+```sh
+auspexai-tenant experiment deviate latest --what "…" --why "…"
+```
 
 #### Long-horizon runs
 
-By default the driver is the D6 proof loop: it stops at first stability (`STABLE_ROUNDS` rounds with no new `(probe, hash)` pair) or at 50 rounds. A real longitudinal study keeps observing *past* stability to catch drift. Three env knobs parameterize the same driver — all default to D6 behavior when unset:
+By default the driver is the D6 proof loop: it stops at first stability (`STABLE_ROUNDS` rounds with no new `(probe, hash)` pair) or at 50 rounds. A real longitudinal study keeps observing *past* stability to catch drift — that is **`--profile research`** (8 h duration mode, 5-minute cadence, and its own pre-registered drift *hypothesis*, in contrast to the starter's descriptive baseline). The legacy env knobs parameterize the same driver — all default to D6 behavior when unset:
 
 | Knob | Effect |
 | --- | --- |

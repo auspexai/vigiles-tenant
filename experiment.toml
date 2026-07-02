@@ -46,7 +46,8 @@ kind = "static"                        # driver-fed; tarball coords optional
 # and ENFORCES it at result ingest — an undeclared / out-of-bounds field is
 # rejected (§7), so under containment the declared set IS the entire
 # interpretability surface (raw outputs are never retained). Declaring it bumps
-# schema_version → "0.3" automatically and is REQUIRED for a certified/citable
+# schema_version → "0.3" automatically ("0.4" when a profile also declares a
+# [pre_registration] block — D16.2) and is REQUIRED for a certified/citable
 # experiment. Keyed by the dotted result-payload path the executor emits
 # (executor.py run_one); load_verified surfaces it as the column data dictionary.
 # This block is the reference declaration a new tenant copies (design §8).
