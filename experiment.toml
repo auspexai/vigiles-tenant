@@ -306,6 +306,16 @@ duration_hours = 1
 research_goal = "C7 §5 rejection validation (c7_calibration_campaign.md §5). Run the UNCHANGED Vigiles probe panel (greeting, arithmetic, enumeration) at temperature 0 / pinned seed against a deliberately DIFFERENT model (Qwen2.5-0.5B-Instruct) to prove the calibration-tightened tolerance envelope still FLAGS genuine divergence. Analysis is offline and mirrors the Phase-0 cross-band method: compare Qwen's per-probe light features (type_token_ratio, top_tokens, counts) to the gemma-3-1b-it-q4 reference from the drift/calibration study and confirm every delta exceeds the tightened envelope (type_token_ratio rel 0.02, top_tokens set_jaccard 0.9). Fixed tiny volume (3 rounds x 3 probes)."
 prompt_characteristics = "The unchanged fixed Vigiles probe panel at temperature 0 / pinned seed — identical inputs to the drift study; only the served model differs (Qwen2.5-0.5B-Instruct in place of gemma-3-1b-it-q4)."
 
+# D19 proving run (2026-07-03): the profile now runs OBSERVE-ONLY. Under the
+# tolerance reducer the §5 rejection test correctly produced 0 receipts (Qwen
+# cross-version-diverged 9/9) — proving the envelope BITES, but leaving nothing
+# custody-verifiable to benchmark. Observe-only makes every replica a receipted,
+# exportable observation (bundle schema v2 carries ALL of them), so the same
+# cross-model contrast scores through the researcher-facing path: expected
+# ~10 EU peak / 100% breadth vs the calibration reference.
+[profiles.contrast_model.reducer]
+kind = "builtin_process_only"
+
 [profiles.contrast_model.driver]
 run_seconds = 0                        # NOT duration mode
 round_interval_seconds = 0             # back-to-back
