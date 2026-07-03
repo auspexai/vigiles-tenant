@@ -164,6 +164,14 @@ unit_prefix = "d6"                     # unit-id prefix (a run-distinct tag)
 # are Phase-3 increment 3 — these profiles carry ONLY real, enforced config today
 # (no unenforced safety markers — declarative-enforcement hygiene).
 
+# Run artifacts (journal, evidence bundle, benchmark reports) land in the
+# STABLE per-user base — cwd-independent and the same path the dashboard reads,
+# so a launch from any directory produces runs the dashboard sees. (2026-07-03:
+# an unset [runs].dir wrote beside the launch cwd; the dashboard scanned its own
+# base and showed "no benchmark" for a scored run.)
+[runs]
+dir = "~/.local/share/auspexai-tenant/runs"
+
 # ── Drift Benchmark declaration ──────────────────────────────────────────────
 # Every monitoring/contrast run scores against the C7 calibration baseline
 # (exp-D2OGQK32 — its signed manifest defines the envelope). Declared HERE, at
