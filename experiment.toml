@@ -164,12 +164,24 @@ unit_prefix = "d6"                     # unit-id prefix (a run-distinct tag)
 # are Phase-3 increment 3 — these profiles carry ONLY real, enforced config today
 # (no unenforced safety markers — declarative-enforcement hygiene).
 
+# ── Drift Benchmark declaration ──────────────────────────────────────────────
+# Every monitoring/contrast run scores against the C7 calibration baseline
+# (exp-D2OGQK32 — its signed manifest defines the envelope). Declared HERE, at
+# launch, before any data exists (the pre-registration posture): the dashboard
+# materializes the score automatically; nobody chooses a comparison after the
+# fact. Baseline-producing profiles switch this OFF with reference = "".
+[benchmark]
+reference = "exp-D2OGQK32"
+
 [profiles.starter]
 # The declawed on-ramp face: benign fixed probe panel, converge-on-stability,
 # short, hash-only, repl-2. ≈ the base config today (Vigiles v0.1.0 already IS the
 # starter), stated explicitly so the promotion gate (increment 2) has a named
 # target to certify. Becomes the R1 no-code default.
 description = "On-ramp starter: benign fixed probes, converge-on-stability, within_cell_tolerance@2 (C7 — version-skew-tolerant cross-worker corroboration; the reducer is inherited from the base)."
+
+[profiles.starter.benchmark]
+reference = ""  # starter runs live under OTHER tenancies — they cannot export our baseline
 
 [profiles.starter.experiment]
 sensitive_content_flags = []
@@ -213,6 +225,9 @@ stable_rounds = 3
 # pre-ratification. Probe panel / seed / num_predict inherited UNCHANGED: calibration
 # must measure the same panel the drift study runs, so the noise floor transfers.
 description = "C7 tolerance-envelope calibration: fixed-volume (25 rounds × 3 probes), repl-3 all-config raw-spread collection; offline pairwise delta analysis per c7_calibration_campaign.md; placeholder envelope not consulted."
+
+[profiles.calibration.benchmark]
+reference = ""  # this run IS the baseline — it scores against nothing
 
 [profiles.calibration.experiment]
 label = "vigiles-c7-calibration"
