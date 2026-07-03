@@ -374,3 +374,76 @@ round_interval_seconds = 0             # back-to-back
 max_rounds = 3                         # tiny fixed volume: 3 rounds x 3 probes = 9 units x repl-1 = 9 executions (minutes)
 stable_rounds = 1000                   # unreachable — fixed-volume, stops at max_rounds
 unit_prefix = "cts"
+
+# ── Weekend endurance campaign (2026-07-04/06): 3 models × 48h, benchmarked ──
+# Three CONCURRENT experiments (one per model — model identity is schema-
+# enforced per manifest; generation policy is per-EXPERIMENT, broker-enforced
+# on every worker). All inherit [benchmark] reference → auto-scored at
+# completion. Greedy gemma keeps tolerance consensus (proven in-envelope);
+# qwen + the new model run observe-only (qwen cross-version byte-diverges on
+# the mayhems; smollm2 is unproven) — every replica receipted + exportable.
+
+[profiles.weekend_gemma]
+description = "48h gemma drift monitor: greedy, tolerance consensus, half-hourly rounds."
+[profiles.weekend_gemma.experiment]
+label = "vigiles-weekend-gemma"
+duration_hours = 48
+replication = 2
+research_goal = "48-hour endurance drift monitoring of the calibrated gemma-3-1b-it-q4 configuration: the unchanged probe panel at temperature 0, half-hourly rounds, scored continuously against the C7 calibration baseline. Validates long-horizon stability of the model, fleet, and benchmark pipeline."
+prompt_characteristics = "The unchanged fixed Vigiles probe panel at temperature 0 — identical inputs to the drift study, sustained for 48 hours."
+[profiles.weekend_gemma.driver]
+run_seconds = 172800
+round_interval_seconds = 1800
+max_rounds = 100000
+stable_rounds = 100000
+unit_prefix = "wg"
+
+[profiles.weekend_qwen]
+description = "48h qwen endurance: greedy, observe-only, half-hourly rounds."
+[profiles.weekend_qwen.reducer]
+kind = "builtin_process_only"
+[profiles.weekend_qwen.experiment]
+label = "vigiles-weekend-qwen"
+model_id = "qwen2.5-0.5b-instruct-q4"
+model_version = "1.0"
+hf_repo = "bartowski/Qwen2.5-0.5B-Instruct-GGUF"
+hf_filename = "Qwen2.5-0.5B-Instruct-Q4_K_M.gguf"
+duration_hours = 48
+replication = 2
+research_goal = "48-hour endurance run of Qwen2.5-0.5B-Instruct on the unchanged probe panel at temperature 0, observe-only collection, benchmarked against the gemma calibration baseline — the persistent cross-model rung, measured continuously."
+prompt_characteristics = "The unchanged fixed Vigiles probe panel at temperature 0; only the served model differs from the drift study."
+[profiles.weekend_qwen.feature_schema."model.id"]
+categories = ["qwen2.5-0.5b-instruct-q4"]
+[profiles.weekend_qwen.driver]
+run_seconds = 172800
+round_interval_seconds = 1800
+max_rounds = 100000
+stable_rounds = 100000
+unit_prefix = "wq"
+
+[profiles.weekend_smollm]
+description = "48h SmolLM2 endurance: seeded sampling (temp 0.8), observe-only — the temp>0 leg + fleet-wide lazy auto-acquire of a never-downloaded model."
+[profiles.weekend_smollm.reducer]
+kind = "builtin_process_only"
+[profiles.weekend_smollm.determinism]
+temperature = 0.8
+top_p = 0.9
+seed = 0
+[profiles.weekend_smollm.experiment]
+label = "vigiles-weekend-smollm"
+model_id = "smollm2-1.7b-instruct-q4"
+model_version = "1.0"
+hf_repo = "bartowski/SmolLM2-1.7B-Instruct-GGUF"
+hf_filename = "SmolLM2-1.7B-Instruct-Q4_K_M.gguf"
+duration_hours = 48
+replication = 2
+research_goal = "48-hour endurance run of SmolLM2-1.7B-Instruct under SEEDED SAMPLING (temperature 0.8, top_p 0.9, pinned seed), observe-only collection, on the unchanged probe panel — exercises the v0.5 generation-policy chain, fleet-wide lazy auto-acquire of a never-served model, and sustained sampling-mode benchmarking against the calibration baseline."
+prompt_characteristics = "The unchanged fixed Vigiles probe panel under seeded sampling (temperature 0.8) — a new model and non-deterministic generation; only lexical summary features are analyzed."
+[profiles.weekend_smollm.feature_schema."model.id"]
+categories = ["smollm2-1.7b-instruct-q4"]
+[profiles.weekend_smollm.driver]
+run_seconds = 172800
+round_interval_seconds = 1800
+max_rounds = 100000
+stable_rounds = 100000
+unit_prefix = "ws"
