@@ -419,7 +419,10 @@ run_seconds = 172800
 round_interval_seconds = 1800
 max_rounds = 100000
 stable_rounds = 100000
-unit_prefix = "wq"
+# wq2: the original wq driver + a no-profile fast-cadence resume desynced the
+# journal from the server's unit-id sequence (unit_id_already_submitted on
+# resume). Fresh prefix = collision-free restart; prior observations stay valid.
+unit_prefix = "wq2"
 
 [profiles.weekend_smollm]
 description = "48h SmolLM2 endurance: seeded sampling (temp 0.8), observe-only — the temp>0 leg + fleet-wide lazy auto-acquire of a never-downloaded model."
