@@ -450,3 +450,75 @@ round_interval_seconds = 1800
 max_rounds = 100000
 stable_rounds = 100000
 unit_prefix = "ws"
+
+# ── OVERNIGHT campaign (2026-07-06): the weekend 3-model panel at a 12h clock ──
+# Three concurrent single-model experiments across the fleet — gemma + qwen
+# greedy (deterministic), smollm seeded-sampling (temp 0.8, process_only) — each
+# 12h at half-hourly rounds (~24 rounds), repl-2, scored against the same C7
+# calibration baseline the weekend runs used (inherited [benchmark] reference).
+# Fresh unit prefixes (og/oq/os) so nothing collides with the weekend journals.
+
+[profiles.overnight_gemma]
+description = "12h gemma drift monitor: greedy, tolerance consensus, half-hourly rounds."
+[profiles.overnight_gemma.experiment]
+label = "vigiles-overnight-gemma"
+duration_hours = 12
+replication = 2
+research_goal = "Overnight (12h) endurance drift monitoring of the calibrated gemma-3-1b-it-q4 configuration: the unchanged probe panel at temperature 0, half-hourly rounds, scored continuously against the C7 calibration baseline. Shorter re-run of the weekend endurance leg."
+prompt_characteristics = "The unchanged fixed Vigiles probe panel at temperature 0 — identical inputs to the drift study, sustained overnight (~12 hours)."
+[profiles.overnight_gemma.driver]
+run_seconds = 43200
+round_interval_seconds = 1800
+max_rounds = 100000
+stable_rounds = 100000
+unit_prefix = "og"
+
+[profiles.overnight_qwen]
+description = "12h qwen endurance: greedy, observe-only, half-hourly rounds."
+[profiles.overnight_qwen.reducer]
+kind = "builtin_process_only"
+[profiles.overnight_qwen.experiment]
+label = "vigiles-overnight-qwen"
+model_id = "qwen2.5-0.5b-instruct-q4"
+model_version = "1.0"
+hf_repo = "bartowski/Qwen2.5-0.5B-Instruct-GGUF"
+hf_filename = "Qwen2.5-0.5B-Instruct-Q4_K_M.gguf"
+duration_hours = 12
+replication = 2
+research_goal = "Overnight (12h) endurance run of Qwen2.5-0.5B-Instruct on the unchanged probe panel at temperature 0, observe-only collection, benchmarked against the gemma calibration baseline — the persistent cross-model rung, measured overnight."
+prompt_characteristics = "The unchanged fixed Vigiles probe panel at temperature 0; only the served model differs from the drift study."
+[profiles.overnight_qwen.feature_schema."model.id"]
+categories = ["qwen2.5-0.5b-instruct-q4"]
+[profiles.overnight_qwen.driver]
+run_seconds = 43200
+round_interval_seconds = 1800
+max_rounds = 100000
+stable_rounds = 100000
+unit_prefix = "oq"
+
+[profiles.overnight_smollm]
+description = "12h SmolLM2 endurance: seeded sampling (temp 0.8), observe-only — the temp>0 leg."
+[profiles.overnight_smollm.reducer]
+kind = "builtin_process_only"
+[profiles.overnight_smollm.determinism]
+temperature = 0.8
+top_p = 0.9
+seed = 0
+[profiles.overnight_smollm.experiment]
+label = "vigiles-overnight-smollm"
+model_id = "smollm2-1.7b-instruct-q4"
+model_version = "1.0"
+hf_repo = "bartowski/SmolLM2-1.7B-Instruct-GGUF"
+hf_filename = "SmolLM2-1.7B-Instruct-Q4_K_M.gguf"
+duration_hours = 12
+replication = 2
+research_goal = "Overnight (12h) endurance run of SmolLM2-1.7B-Instruct under SEEDED SAMPLING (temperature 0.8, top_p 0.9, pinned seed), observe-only collection, on the unchanged probe panel — the temp>0 leg, exercising the v0.5 generation-policy chain and sustained sampling-mode benchmarking against the calibration baseline."
+prompt_characteristics = "The unchanged fixed Vigiles probe panel under seeded sampling (temperature 0.8) — non-deterministic generation; only lexical summary features are analyzed."
+[profiles.overnight_smollm.feature_schema."model.id"]
+categories = ["smollm2-1.7b-instruct-q4"]
+[profiles.overnight_smollm.driver]
+run_seconds = 43200
+round_interval_seconds = 1800
+max_rounds = 100000
+stable_rounds = 100000
+unit_prefix = "os"
