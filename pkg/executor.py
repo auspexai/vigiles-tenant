@@ -40,6 +40,7 @@ Result payload shape (vigiles-drift-probe/v0):
 from __future__ import annotations
 
 import hashlib
+import os
 import unicodedata
 from collections import Counter
 
@@ -99,7 +100,7 @@ def run_one(unit: dict, models_dir) -> dict:
     # Deterministic ordering: count desc, then token asc.
     top = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:TOP_TOKENS]
 
-    return {
+    out = {
         "schema": "vigiles-drift-probe/v0",
         "probe_id": payload.get("probe_id"),
         "response_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
@@ -113,6 +114,14 @@ def run_one(unit: dict, models_dir) -> dict:
         },
         "model": {"id": reply.get("model"), "gguf_sha256": info.get("gguf_sha256")},
     }
+    # D20 (ratified 2026-07-06): raw-content capture, opt-in. Emitted ONLY when
+    # the manifest declares `[capture] raw` — the coordinator permits the
+    # reserved `raw_response` key iff capture is declared, strips it before
+    # persistence (never at rest), and an R3 researcher collects it live. The
+    # anchor is free: sha256(raw_response) == response_sha256 above.
+    if os.environ.get("AUSPEXAI_CAPTURE_RAW") == "1":
+        out["raw_response"] = text
+    return out
 
 
 if __name__ == "__main__":
