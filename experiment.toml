@@ -528,15 +528,16 @@ unit_prefix = "os"
 # process_only), each a 10h duration run with NO inter-round pause (back-to-back —
 # the "minimum pauses" ask; rounds are naturally spaced by inference time). Fleet-fit
 # (footprint x 1.2 serve overhead vs the 5.44 GB Jetson budget): mistral (5.25->6.3)
-# and llama-3-8b (5.91->7.09) both exceed it -> Mac-only (mistral keeps its repl-2
-# target but settles to the T2 floor of 1 on the sole capable worker; llama is repl-1).
+# and llama-3-8b (5.91->7.09) both exceed it -> Mac-only, so both run repl-1 on the Mac
+# (repl-2 on a single-capable-worker fleet strands units at 1-of-2 — the floor-settle
+# sweep is not on a recurring timer, so they freeze rather than settling at floor).
 # qwen2.5-0.5b (~0.4->0.5) fits the Jetsons -> repl-2 across the mayhem pair, so the
 # small-model leg is where the mayhems contribute (2026-07-09 resize: the 14B qwen3
 # was Jetson-incapable at load — "unable to allocate CUDA0 buffer"). Fresh prefixes
 # (o10m/o10l/o10q25). Scored against the inherited C7 calibration baseline.
 
 [profiles.overnight10_mistral]
-description = "10h Mistral-7B-v0.3 sampling drift: temp 0.8, process_only, back-to-back rounds, repl-2 fleet-wide."
+description = "10h Mistral-7B-v0.3 sampling drift: temp 0.8, process_only, back-to-back rounds, repl-1 (Mac-only under the serve-overhead gate)."
 [profiles.overnight10_mistral.reducer]
 kind = "builtin_process_only"
 [profiles.overnight10_mistral.determinism]
@@ -550,21 +551,21 @@ model_version = "1.0"
 hf_repo = "MaziyarPanahi/Mistral-7B-Instruct-v0.3-GGUF"
 hf_filename = "Mistral-7B-Instruct-v0.3.Q4_K_M.gguf"
 duration_hours = 10
-replication = 2
-research_goal = "10-hour seeded-sampling (temperature 0.8, top_p 0.9, pinned seed) run of Mistral-7B-Instruct-v0.3 on the unchanged Vigiles probe panel, process_only collection, back-to-back rounds, replication 2 across both Jetsons + the Mac — sustained sampling-mode drift monitoring benchmarked against the C7 calibration baseline."
+replication = 1
+research_goal = "10-hour seeded-sampling (temperature 0.8, top_p 0.9, pinned seed) run of Mistral-7B-Instruct-v0.3 on the unchanged Vigiles probe panel, process_only collection, back-to-back rounds, replication 1 on the Mac (its 6.3 GB serve footprint fits only the 24 GB Mac under the load-overhead gate) — a single-worker sampling trajectory benchmarked against the C7 calibration baseline."
 prompt_characteristics = "The unchanged fixed Vigiles probe panel under seeded sampling (temperature 0.8) — non-deterministic generation; only lexical summary features are analyzed."
 [profiles.overnight10_mistral.feature_schema."model.id"]
 categories = ["mistral-7b-instruct-v0.3-q4"]
 [profiles.overnight10_mistral.pre_registration]
 hypothesis = "under seeded sampling (temperature 0.8, top_p 0.9, pinned seed 0), each fixed Vigiles probe's output is reproducible within a worker across the 10-hour horizon (the seed pins the sampler); a post-stability exit of a probe's lexical feature signature from its C7-calibrated comparison envelope is a drift event attributable to the serving stack, the pinned weights held constant. Null = within-envelope stability throughout."
-analysis_method = "per probe_id and per replica, track the lexical feature vector (type_token_ratio, top_tokens) across the back-to-back rounds; a sustained post-stability exit from the declared comparison envelope is the drift signal. Corroboration is process_only because seeded sampling is not byte-reproducible across Ollama versions (C15), so the trajectory is analyzed per replica, not as a cross-worker consensus."
+analysis_method = "per probe_id, track the lexical feature vector (type_token_ratio, top_tokens) across the back-to-back rounds on the single serving worker (Mac); a sustained post-stability exit from the declared comparison envelope is the drift signal. Replication 1 (Mac-only: the 6.3 GB serve footprint fits only the 24 GB Mac), so this is a single-worker sampling trajectory; corroboration is process_only because seeded sampling is not byte-reproducible across Ollama versions (C15)."
 features = ["lexical.type_token_ratio", "lexical.top_tokens", "response_sha256"]
 timescale = "long_horizon"
 decision_rule = "drift IFF a probe's lexical feature vector exits the declared comparison envelope after initial stability, sustained across consecutive rounds"
 expected_result = "descriptive: characterize Mistral-7B-Instruct-v0.3's seeded-sampling lexical stability over 10h; null = at least one probe exits its envelope post-stability (a serving-stack drift event)"
 stopping_rule = "fixed 10h duration (run_seconds=36000), declared up front - not data-peeking-dependent"
 comparison_keys = ["probe_id"]
-min_replication = 2
+min_replication = 1
 [profiles.overnight10_mistral.driver]
 run_seconds = 36000
 round_interval_seconds = 0
