@@ -74,12 +74,12 @@ A duration run ends with outcome `exhausted` (the driver declines the round afte
 
 #### Concurrent campaigns (multiple models at once)
 
-`experiment launch` **drives for the whole run**, so several experiments running at once need several persistent drivers — running them one after another in a single terminal drives only the first and leaves the rest **approved with no work units** (driverless). Pass **`--detach`** (`auspexai-tenant` ≥ 0.6.49): each launch runs its driver as a background process that survives the terminal (no `tmux`/`nohup`), and you manage them with `experiment ps` / `experiment stop`:
+`experiment launch` **drives for the whole run**, so several experiments running at once need several persistent drivers — running them one after another in a single terminal drives only the first and leaves the rest **approved with no work units** (driverless). Pass **`--detach`** (`auspexai-tenant` ≥ 0.6.51 — earlier detached builds drove the wrong experiment when several launched at once): each launch runs its driver as a background process that survives the terminal (no `tmux`/`nohup`), and you manage them with `experiment ps` / `experiment stop`:
 
 ```sh
 auspexai-tenant experiment launch --profile overnight10_mistral --detach
 auspexai-tenant experiment launch --profile overnight10_llama   --detach
-auspexai-tenant experiment launch --profile overnight10_qwen3   --detach
+auspexai-tenant experiment launch --profile overnight10_qwen25  --detach
 auspexai-tenant experiment ps                       # confirm all three are driving
 auspexai-tenant experiment stop <run-id|exp-id>     # stop one (or --all)
 ```
