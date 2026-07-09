@@ -522,3 +522,93 @@ round_interval_seconds = 1800
 max_rounds = 100000
 stable_rounds = 100000
 unit_prefix = "os"
+
+# ── 10h SAMPLING panel (2026-07-08): mistral-7b-v0.3 / llama-3-8b / qwen3-14b ──
+# Three single-model experiments under seeded sampling (temp 0.8, top_p 0.9,
+# process_only), each a 10h duration run with NO inter-round pause (back-to-back —
+# the "minimum pauses" ask; rounds are naturally spaced by inference time). Fleet-fit:
+# mistral (5.24 GB footprint) fits both Jetsons + Mac -> repl-2; llama-3-8b (5.90) and
+# qwen3-14b (10.8) exceed the 5.44 GB Jetson serve budget -> repl-1 on the Mac (the
+# submitter is T2, floor 1, so a 1-worker unit settles instead of pausing). Fresh
+# prefixes (o10m/o10l/o10q). Scored against the inherited C7 calibration baseline.
+
+[profiles.overnight10_mistral]
+description = "10h Mistral-7B-v0.3 sampling drift: temp 0.8, process_only, back-to-back rounds, repl-2 fleet-wide."
+[profiles.overnight10_mistral.reducer]
+kind = "builtin_process_only"
+[profiles.overnight10_mistral.determinism]
+temperature = 0.8
+top_p = 0.9
+seed = 0
+[profiles.overnight10_mistral.experiment]
+label = "vigiles-overnight10-mistral"
+model_id = "mistral-7b-instruct-v0.3-q4"
+model_version = "1.0"
+hf_repo = "MaziyarPanahi/Mistral-7B-Instruct-v0.3-GGUF"
+hf_filename = "Mistral-7B-Instruct-v0.3.Q4_K_M.gguf"
+duration_hours = 10
+replication = 2
+research_goal = "10-hour seeded-sampling (temperature 0.8, top_p 0.9, pinned seed) run of Mistral-7B-Instruct-v0.3 on the unchanged Vigiles probe panel, process_only collection, back-to-back rounds, replication 2 across both Jetsons + the Mac — sustained sampling-mode drift monitoring benchmarked against the C7 calibration baseline."
+prompt_characteristics = "The unchanged fixed Vigiles probe panel under seeded sampling (temperature 0.8) — non-deterministic generation; only lexical summary features are analyzed."
+[profiles.overnight10_mistral.feature_schema."model.id"]
+categories = ["mistral-7b-instruct-v0.3-q4"]
+[profiles.overnight10_mistral.driver]
+run_seconds = 36000
+round_interval_seconds = 0
+max_rounds = 100000
+stable_rounds = 100000
+unit_prefix = "o10m"
+
+[profiles.overnight10_llama]
+description = "10h Meta-Llama-3-8B sampling drift: temp 0.8, process_only, back-to-back, repl-1 (Mac-only; exceeds Jetson serve budget)."
+[profiles.overnight10_llama.reducer]
+kind = "builtin_process_only"
+[profiles.overnight10_llama.determinism]
+temperature = 0.8
+top_p = 0.9
+seed = 0
+[profiles.overnight10_llama.experiment]
+label = "vigiles-overnight10-llama"
+model_id = "meta-llama-3-8b-instruct-q4"
+model_version = "1.0"
+hf_repo = "MaziyarPanahi/Meta-Llama-3-8B-Instruct-GGUF"
+hf_filename = "Meta-Llama-3-8B-Instruct.Q4_K_M.gguf"
+duration_hours = 10
+replication = 1
+research_goal = "10-hour seeded-sampling (temperature 0.8, top_p 0.9, pinned seed) run of Meta-Llama-3-8B-Instruct on the unchanged Vigiles probe panel, process_only collection, back-to-back rounds, replication 1 on the Mac (its 5.90 GB load footprint exceeds the 5.44 GB Jetson serve budget) — sampling-mode drift monitoring benchmarked against the C7 calibration baseline."
+prompt_characteristics = "The unchanged fixed Vigiles probe panel under seeded sampling (temperature 0.8) — non-deterministic generation; only lexical summary features are analyzed."
+[profiles.overnight10_llama.feature_schema."model.id"]
+categories = ["meta-llama-3-8b-instruct-q4"]
+[profiles.overnight10_llama.driver]
+run_seconds = 36000
+round_interval_seconds = 0
+max_rounds = 100000
+stable_rounds = 100000
+unit_prefix = "o10l"
+
+[profiles.overnight10_qwen3]
+description = "10h Qwen3-14B sampling drift: temp 0.8, process_only, back-to-back, repl-1 (Mac-only; 10.8 GB footprint)."
+[profiles.overnight10_qwen3.reducer]
+kind = "builtin_process_only"
+[profiles.overnight10_qwen3.determinism]
+temperature = 0.8
+top_p = 0.9
+seed = 0
+[profiles.overnight10_qwen3.experiment]
+label = "vigiles-overnight10-qwen3"
+model_id = "qwen3-14b-q4"
+model_version = "1.0"
+hf_repo = "MaziyarPanahi/Qwen3-14B-GGUF"
+hf_filename = "Qwen3-14B.Q4_K_M.gguf"
+duration_hours = 10
+replication = 1
+research_goal = "10-hour seeded-sampling (temperature 0.8, top_p 0.9, pinned seed) run of Qwen3-14B on the unchanged Vigiles probe panel, process_only collection, back-to-back rounds, replication 1 on the Mac (its 10.8 GB load footprint fits only the 24 GB Mac) — the largest-model sampling leg, benchmarked against the C7 calibration baseline."
+prompt_characteristics = "The unchanged fixed Vigiles probe panel under seeded sampling (temperature 0.8) — non-deterministic generation; only lexical summary features are analyzed."
+[profiles.overnight10_qwen3.feature_schema."model.id"]
+categories = ["qwen3-14b-q4"]
+[profiles.overnight10_qwen3.driver]
+run_seconds = 36000
+round_interval_seconds = 0
+max_rounds = 100000
+stable_rounds = 100000
+unit_prefix = "o10q"
