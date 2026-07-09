@@ -72,6 +72,19 @@ auspexai-tenant experiment run <coordinator-experiment-id> \
 
 A duration run ends with outcome `exhausted` (the driver declines the round after the window closes — observation complete), not `converged`. The elapsed clock is `time.monotonic` from the first batch this process issues; a journal-resumed run restarts the window.
 
+#### Concurrent campaigns (multiple models at once)
+
+`experiment launch` **blocks and drives for the whole run**, so running several experiments concurrently means several persistent driver processes — one per experiment. Running them one after another in a single terminal drives only the first and leaves the rest **approved with no work units** (driverless). Use [`campaign.sh`](campaign.sh), which launches each profile as its own detached `tmux` session (the same canonical `experiment launch --profile <p>`), so every experiment gets a persistent driver and all drive at once:
+
+```sh
+./campaign.sh overnight10_mistral overnight10_llama overnight10_qwen3
+# tmux ls                       — list the running drivers
+# tmux attach -t vig-<profile>  — watch one (Ctrl-b d to detach)
+# tmux kill-session -t vig-<profile>  — stop one (aborts that run)
+```
+
+Each session still waits for your maintainer approval, then drives. Logs land in `runs/<profile>.log`. This is the standard for multi-model panels — don't hand-run `launch` in a loop.
+
 ## Scope
 
 This repository holds:
