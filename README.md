@@ -74,16 +74,17 @@ A duration run ends with outcome `exhausted` (the driver declines the round afte
 
 #### Concurrent campaigns (multiple models at once)
 
-`experiment launch` **blocks and drives for the whole run**, so running several experiments concurrently means several persistent driver processes — one per experiment. Running them one after another in a single terminal drives only the first and leaves the rest **approved with no work units** (driverless). Use [`campaign.sh`](campaign.sh), which launches each profile as its own detached `tmux` session (the same canonical `experiment launch --profile <p>`), so every experiment gets a persistent driver and all drive at once:
+`experiment launch` **drives for the whole run**, so several experiments running at once need several persistent drivers — running them one after another in a single terminal drives only the first and leaves the rest **approved with no work units** (driverless). Pass **`--detach`** (`auspexai-tenant` ≥ 0.6.49): each launch runs its driver as a background process that survives the terminal (no `tmux`/`nohup`), and you manage them with `experiment ps` / `experiment stop`:
 
 ```sh
-./campaign.sh overnight10_mistral overnight10_llama overnight10_qwen3
-# tmux ls                       — list the running drivers
-# tmux attach -t vig-<profile>  — watch one (Ctrl-b d to detach)
-# tmux kill-session -t vig-<profile>  — stop one (aborts that run)
+auspexai-tenant experiment launch --profile overnight10_mistral --detach
+auspexai-tenant experiment launch --profile overnight10_llama   --detach
+auspexai-tenant experiment launch --profile overnight10_qwen3   --detach
+auspexai-tenant experiment ps                       # confirm all three are driving
+auspexai-tenant experiment stop <run-id|exp-id>     # stop one (or --all)
 ```
 
-Each session still waits for your maintainer approval, then drives. Logs land in `runs/<profile>.log`. This is the standard for multi-model panels — don't hand-run `launch` in a loop.
+Each waits for your maintainer approval, then drives; logs are at `~/.local/share/auspexai-tenant/drivers/<run-id>/driver.log`. A `stopped` row in `ps` whose experiment isn't finished is a driver that died — resume it with `experiment run <exp-id> --detach`. This is the standard for multi-model panels — don't hand-run `launch` in a loop.
 
 ## Scope
 
