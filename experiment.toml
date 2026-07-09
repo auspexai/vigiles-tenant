@@ -552,6 +552,16 @@ research_goal = "10-hour seeded-sampling (temperature 0.8, top_p 0.9, pinned see
 prompt_characteristics = "The unchanged fixed Vigiles probe panel under seeded sampling (temperature 0.8) — non-deterministic generation; only lexical summary features are analyzed."
 [profiles.overnight10_mistral.feature_schema."model.id"]
 categories = ["mistral-7b-instruct-v0.3-q4"]
+[profiles.overnight10_mistral.pre_registration]
+hypothesis = "under seeded sampling (temperature 0.8, top_p 0.9, pinned seed 0), each fixed Vigiles probe's output is reproducible within a worker across the 10-hour horizon (the seed pins the sampler); a post-stability exit of a probe's lexical feature signature from its C7-calibrated comparison envelope is a drift event attributable to the serving stack, the pinned weights held constant. Null = within-envelope stability throughout."
+analysis_method = "per probe_id and per replica, track the lexical feature vector (type_token_ratio, top_tokens) across the back-to-back rounds; a sustained post-stability exit from the declared comparison envelope is the drift signal. Corroboration is process_only because seeded sampling is not byte-reproducible across Ollama versions (C15), so the trajectory is analyzed per replica, not as a cross-worker consensus."
+features = ["lexical.type_token_ratio", "lexical.top_tokens", "response_sha256"]
+timescale = "long_horizon"
+decision_rule = "drift IFF a probe's lexical feature vector exits the declared comparison envelope after initial stability, sustained across consecutive rounds"
+expected_result = "descriptive: characterize Mistral-7B-Instruct-v0.3's seeded-sampling lexical stability over 10h; null = at least one probe exits its envelope post-stability (a serving-stack drift event)"
+stopping_rule = "fixed 10h duration (run_seconds=36000), declared up front - not data-peeking-dependent"
+comparison_keys = ["probe_id"]
+min_replication = 2
 [profiles.overnight10_mistral.driver]
 run_seconds = 36000
 round_interval_seconds = 0
@@ -579,6 +589,16 @@ research_goal = "10-hour seeded-sampling (temperature 0.8, top_p 0.9, pinned see
 prompt_characteristics = "The unchanged fixed Vigiles probe panel under seeded sampling (temperature 0.8) — non-deterministic generation; only lexical summary features are analyzed."
 [profiles.overnight10_llama.feature_schema."model.id"]
 categories = ["meta-llama-3-8b-instruct-q4"]
+[profiles.overnight10_llama.pre_registration]
+hypothesis = "under seeded sampling (temperature 0.8, top_p 0.9, pinned seed 0), each fixed Vigiles probe's output is reproducible within a worker across the 10-hour horizon (the seed pins the sampler); a post-stability exit of a probe's lexical feature signature from its C7-calibrated comparison envelope is a drift event attributable to the serving stack, the pinned weights held constant. Null = within-envelope stability throughout."
+analysis_method = "per probe_id, track the lexical feature vector (type_token_ratio, top_tokens) across the back-to-back rounds on the single serving worker (Mac); a sustained post-stability exit from the declared comparison envelope is the drift signal. Replication 1 (Mac-only: the 5.90 GB load footprint exceeds the Jetson serve budget), so this is a single-worker sampling trajectory, not a cross-worker corroboration."
+features = ["lexical.type_token_ratio", "lexical.top_tokens", "response_sha256"]
+timescale = "long_horizon"
+decision_rule = "drift IFF a probe's lexical feature vector exits the declared comparison envelope after initial stability, sustained across consecutive rounds"
+expected_result = "descriptive: characterize Meta-Llama-3-8B-Instruct's seeded-sampling lexical stability over 10h; null = at least one probe exits its envelope post-stability (a serving-stack drift event)"
+stopping_rule = "fixed 10h duration (run_seconds=36000), declared up front - not data-peeking-dependent"
+comparison_keys = ["probe_id"]
+min_replication = 1
 [profiles.overnight10_llama.driver]
 run_seconds = 36000
 round_interval_seconds = 0
@@ -606,6 +626,16 @@ research_goal = "10-hour seeded-sampling (temperature 0.8, top_p 0.9, pinned see
 prompt_characteristics = "The unchanged fixed Vigiles probe panel under seeded sampling (temperature 0.8) — non-deterministic generation; only lexical summary features are analyzed."
 [profiles.overnight10_qwen3.feature_schema."model.id"]
 categories = ["qwen3-14b-q4"]
+[profiles.overnight10_qwen3.pre_registration]
+hypothesis = "under seeded sampling (temperature 0.8, top_p 0.9, pinned seed 0), each fixed Vigiles probe's output is reproducible within a worker across the 10-hour horizon (the seed pins the sampler); a post-stability exit of a probe's lexical feature signature from its C7-calibrated comparison envelope is a drift event attributable to the serving stack, the pinned weights held constant. Null = within-envelope stability throughout."
+analysis_method = "per probe_id, track the lexical feature vector (type_token_ratio, top_tokens) across the back-to-back rounds on the single serving worker (Mac); a sustained post-stability exit from the declared comparison envelope is the drift signal. Replication 1 (Mac-only: the 10.8 GB load footprint fits only the 24 GB Mac), so this is a single-worker sampling trajectory of the largest model in the panel."
+features = ["lexical.type_token_ratio", "lexical.top_tokens", "response_sha256"]
+timescale = "long_horizon"
+decision_rule = "drift IFF a probe's lexical feature vector exits the declared comparison envelope after initial stability, sustained across consecutive rounds"
+expected_result = "descriptive: characterize Qwen3-14B's seeded-sampling lexical stability over 10h; null = at least one probe exits its envelope post-stability (a serving-stack drift event)"
+stopping_rule = "fixed 10h duration (run_seconds=36000), declared up front - not data-peeking-dependent"
+comparison_keys = ["probe_id"]
+min_replication = 1
 [profiles.overnight10_qwen3.driver]
 run_seconds = 36000
 round_interval_seconds = 0
