@@ -646,3 +646,124 @@ round_interval_seconds = 0
 max_rounds = 100000
 stable_rounds = 100000
 unit_prefix = "o10q25"
+
+# ── 10h DETERMINISTIC panel (greedy, temp 0): mistral-7b-v0.3 / llama-3-8b / smollm2-1.7b ──
+# The overnight10 three-model panel re-run GREEDY — the deterministic counterpart to the
+# seeded-sampling legs above. Same models / panel / 10h volume / process_only collection;
+# ONLY the generation policy differs — temperature 0.0 in place of 0.8 (top_p/seed left in
+# place but inert at greedy). smollm2-1.7b takes the small-model repl-2 mayhem slot (qwen25
+# in the sampling panel); mistral + llama stay repl-1 Mac-only under the serve-overhead gate.
+# Fresh prefixes (o10dm/o10dl/o10ds) + labels so nothing collides with the sampling journals.
+# The [determinism] block is kept (temp 0.0), so the manifest still declares a generation
+# policy → v0.2.56+ workers required (the fleet is 0.2.71 — excludes no one).
+
+[profiles.overnight10det_mistral]
+description = "10h Mistral-7B-v0.3 DETERMINISTIC (greedy, temp 0) drift: process_only, back-to-back, repl-1 (Mac-only under the serve-overhead gate)."
+[profiles.overnight10det_mistral.reducer]
+kind = "builtin_process_only"
+[profiles.overnight10det_mistral.determinism]
+temperature = 0.0                      # greedy; top_p/seed inert at temp 0
+top_p = 0.9
+seed = 0
+[profiles.overnight10det_mistral.experiment]
+label = "vigiles-overnight10det-mistral"
+model_id = "mistral-7b-instruct-v0.3-q4"
+model_version = "1.0"
+hf_repo = "MaziyarPanahi/Mistral-7B-Instruct-v0.3-GGUF"
+hf_filename = "Mistral-7B-Instruct-v0.3.Q4_K_M.gguf"
+duration_hours = 10
+replication = 1
+research_goal = "10-hour DETERMINISTIC (greedy, temperature 0) run of Mistral-7B-Instruct-v0.3 on the unchanged Vigiles probe panel, process_only collection, back-to-back rounds, replication 1 on the Mac (its 6.3 GB serve footprint fits only the 24 GB Mac under the load-overhead gate) — the greedy counterpart to the seeded-sampling overnight10 leg, benchmarked against the C7 calibration baseline."
+prompt_characteristics = "The unchanged fixed Vigiles probe panel at temperature 0 (greedy, no sampler) — deterministic generation; only lexical summary features are analyzed."
+[profiles.overnight10det_mistral.feature_schema."model.id"]
+categories = ["mistral-7b-instruct-v0.3-q4"]
+[profiles.overnight10det_mistral.pre_registration]
+hypothesis = "at temperature 0 (greedy decoding), each fixed Vigiles probe's output is byte-reproducible within a worker across the 10-hour horizon (the weights and greedy policy are pinned); a post-stability exit of a probe's lexical feature signature from its C7-calibrated comparison envelope is a drift event attributable to the serving stack, the pinned weights held constant. Null = within-envelope stability throughout."
+analysis_method = "per probe_id, track the lexical feature vector (type_token_ratio, top_tokens) across the back-to-back rounds on the single serving worker (Mac); a sustained post-stability exit from the declared comparison envelope is the drift signal. Replication 1 (Mac-only: the 6.3 GB serve footprint fits only the 24 GB Mac), so this is a single-worker greedy trajectory; collection is process_only (each replica an independent receipted observation)."
+features = ["lexical.type_token_ratio", "lexical.top_tokens", "response_sha256"]
+timescale = "long_horizon"
+decision_rule = "drift IFF a probe's lexical feature vector exits the declared comparison envelope after initial stability, sustained across consecutive rounds"
+expected_result = "descriptive: characterize Mistral-7B-Instruct-v0.3's greedy (temp 0) lexical stability over 10h; null = at least one probe exits its envelope post-stability (a serving-stack drift event)"
+stopping_rule = "fixed 10h duration (run_seconds=36000), declared up front - not data-peeking-dependent"
+comparison_keys = ["probe_id"]
+min_replication = 1
+[profiles.overnight10det_mistral.driver]
+run_seconds = 36000
+round_interval_seconds = 0
+max_rounds = 100000
+stable_rounds = 100000
+unit_prefix = "o10dm"
+
+[profiles.overnight10det_llama]
+description = "10h Meta-Llama-3-8B DETERMINISTIC (greedy, temp 0) drift: process_only, back-to-back, repl-1 (Mac-only; exceeds Jetson serve budget)."
+[profiles.overnight10det_llama.reducer]
+kind = "builtin_process_only"
+[profiles.overnight10det_llama.determinism]
+temperature = 0.0                      # greedy; top_p/seed inert at temp 0
+top_p = 0.9
+seed = 0
+[profiles.overnight10det_llama.experiment]
+label = "vigiles-overnight10det-llama"
+model_id = "meta-llama-3-8b-instruct-q4"
+model_version = "1.0"
+hf_repo = "MaziyarPanahi/Meta-Llama-3-8B-Instruct-GGUF"
+hf_filename = "Meta-Llama-3-8B-Instruct.Q4_K_M.gguf"
+duration_hours = 10
+replication = 1
+research_goal = "10-hour DETERMINISTIC (greedy, temperature 0) run of Meta-Llama-3-8B-Instruct on the unchanged Vigiles probe panel, process_only collection, back-to-back rounds, replication 1 on the Mac (its 5.90 GB load footprint exceeds the 5.44 GB Jetson serve budget) — the greedy counterpart to the seeded-sampling overnight10 leg, benchmarked against the C7 calibration baseline."
+prompt_characteristics = "The unchanged fixed Vigiles probe panel at temperature 0 (greedy, no sampler) — deterministic generation; only lexical summary features are analyzed."
+[profiles.overnight10det_llama.feature_schema."model.id"]
+categories = ["meta-llama-3-8b-instruct-q4"]
+[profiles.overnight10det_llama.pre_registration]
+hypothesis = "at temperature 0 (greedy decoding), each fixed Vigiles probe's output is byte-reproducible within a worker across the 10-hour horizon (the weights and greedy policy are pinned); a post-stability exit of a probe's lexical feature signature from its C7-calibrated comparison envelope is a drift event attributable to the serving stack, the pinned weights held constant. Null = within-envelope stability throughout."
+analysis_method = "per probe_id, track the lexical feature vector (type_token_ratio, top_tokens) across the back-to-back rounds on the single serving worker (Mac); a sustained post-stability exit from the declared comparison envelope is the drift signal. Replication 1 (Mac-only: the 5.90 GB load footprint exceeds the Jetson serve budget), so this is a single-worker greedy trajectory; collection is process_only (each replica an independent receipted observation)."
+features = ["lexical.type_token_ratio", "lexical.top_tokens", "response_sha256"]
+timescale = "long_horizon"
+decision_rule = "drift IFF a probe's lexical feature vector exits the declared comparison envelope after initial stability, sustained across consecutive rounds"
+expected_result = "descriptive: characterize Meta-Llama-3-8B-Instruct's greedy (temp 0) lexical stability over 10h; null = at least one probe exits its envelope post-stability (a serving-stack drift event)"
+stopping_rule = "fixed 10h duration (run_seconds=36000), declared up front - not data-peeking-dependent"
+comparison_keys = ["probe_id"]
+min_replication = 1
+[profiles.overnight10det_llama.driver]
+run_seconds = 36000
+round_interval_seconds = 0
+max_rounds = 100000
+stable_rounds = 100000
+unit_prefix = "o10dl"
+
+[profiles.overnight10det_smollm]
+description = "10h SmolLM2-1.7B DETERMINISTIC (greedy, temp 0) drift: process_only, back-to-back, repl-2 (mayhem pair; ~1.1 GB fits the Jetsons)."
+[profiles.overnight10det_smollm.reducer]
+kind = "builtin_process_only"
+[profiles.overnight10det_smollm.determinism]
+temperature = 0.0                      # greedy; top_p/seed inert at temp 0
+top_p = 0.9
+seed = 0
+[profiles.overnight10det_smollm.experiment]
+label = "vigiles-overnight10det-smollm"
+model_id = "smollm2-1.7b-instruct-q4"
+model_version = "1.0"
+hf_repo = "bartowski/SmolLM2-1.7B-Instruct-GGUF"
+hf_filename = "SmolLM2-1.7B-Instruct-Q4_K_M.gguf"
+duration_hours = 10
+replication = 2
+research_goal = "10-hour DETERMINISTIC (greedy, temperature 0) run of SmolLM2-1.7B-Instruct on the unchanged Vigiles probe panel, process_only collection, back-to-back rounds, replication 2 across the mayhem pair (its ~1.1 GB load footprint fits the Jetsons) — the greedy small-model leg (in place of qwen25 in the sampling panel), benchmarked against the C7 calibration baseline."
+prompt_characteristics = "The unchanged fixed Vigiles probe panel at temperature 0 (greedy, no sampler) — deterministic generation; only lexical summary features are analyzed."
+[profiles.overnight10det_smollm.feature_schema."model.id"]
+categories = ["smollm2-1.7b-instruct-q4"]
+[profiles.overnight10det_smollm.pre_registration]
+hypothesis = "at temperature 0 (greedy decoding), each fixed Vigiles probe's output is byte-reproducible within a worker across the 10-hour horizon (the weights and greedy policy are pinned); a post-stability exit of a probe's lexical feature signature from its C7-calibrated comparison envelope is a drift event attributable to the serving stack, the pinned weights held constant. Null = within-envelope stability throughout."
+analysis_method = "per probe_id, track the lexical feature vector (type_token_ratio, top_tokens) across the back-to-back rounds on each of the two serving workers (mayhem pair); a sustained post-stability exit from the declared comparison envelope is the drift signal. Replication 2 (the ~1.1 GB load footprint fits the Jetsons), but collection is process_only, so the two replicas are independent single-worker greedy trajectories, not a cross-worker consensus — smollm2's cross-Ollama-version byte-agreement is unproven, so this run characterizes it rather than assuming it."
+features = ["lexical.type_token_ratio", "lexical.top_tokens", "response_sha256"]
+timescale = "long_horizon"
+decision_rule = "drift IFF a probe's lexical feature vector exits the declared comparison envelope after initial stability, sustained across consecutive rounds"
+expected_result = "descriptive: characterize SmolLM2-1.7B-Instruct's greedy (temp 0) lexical stability over 10h; null = at least one probe exits its envelope post-stability (a serving-stack drift event)"
+stopping_rule = "fixed 10h duration (run_seconds=36000), declared up front - not data-peeking-dependent"
+comparison_keys = ["probe_id"]
+min_replication = 2
+[profiles.overnight10det_smollm.driver]
+run_seconds = 36000
+round_interval_seconds = 0
+max_rounds = 100000
+stable_rounds = 100000
+unit_prefix = "o10ds"
