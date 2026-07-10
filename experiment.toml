@@ -662,9 +662,7 @@ description = "10h Mistral-7B-v0.3 DETERMINISTIC (greedy, temp 0) drift: process
 [profiles.overnight10det_mistral.reducer]
 kind = "builtin_process_only"
 [profiles.overnight10det_mistral.determinism]
-temperature = 0.0                      # greedy; top_p/seed inert at temp 0
-top_p = 0.9
-seed = 0
+temperature = 0.0                      # greedy (temp 0); NO sampling knobs — the SDK rejects top_p/seed at temp 0
 [profiles.overnight10det_mistral.experiment]
 label = "vigiles-overnight10det-mistral"
 model_id = "mistral-7b-instruct-v0.3-q4"
@@ -699,9 +697,7 @@ description = "10h Meta-Llama-3-8B DETERMINISTIC (greedy, temp 0) drift: process
 [profiles.overnight10det_llama.reducer]
 kind = "builtin_process_only"
 [profiles.overnight10det_llama.determinism]
-temperature = 0.0                      # greedy; top_p/seed inert at temp 0
-top_p = 0.9
-seed = 0
+temperature = 0.0                      # greedy (temp 0); NO sampling knobs — the SDK rejects top_p/seed at temp 0
 [profiles.overnight10det_llama.experiment]
 label = "vigiles-overnight10det-llama"
 model_id = "meta-llama-3-8b-instruct-q4"
@@ -736,9 +732,7 @@ description = "10h SmolLM2-1.7B DETERMINISTIC (greedy, temp 0) drift: process_on
 [profiles.overnight10det_smollm.reducer]
 kind = "builtin_process_only"
 [profiles.overnight10det_smollm.determinism]
-temperature = 0.0                      # greedy; top_p/seed inert at temp 0
-top_p = 0.9
-seed = 0
+temperature = 0.0                      # greedy (temp 0); NO sampling knobs — the SDK rejects top_p/seed at temp 0
 [profiles.overnight10det_smollm.experiment]
 label = "vigiles-overnight10det-smollm"
 model_id = "smollm2-1.7b-instruct-q4"
