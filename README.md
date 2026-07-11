@@ -19,7 +19,7 @@ Two findings shaped the current design. The keystone run (`exp-_LtpfHNh`, 2026-0
 
 ### Running D6
 
-Knobs live in [`experiment.toml`](experiment.toml): `[experiment]`/`[executor]`/`[reducer]` feed the build, `[driver]` feeds the run. Requires `auspexai-tenant>=0.5.9` (`experiment build`). The legacy `VIGILES_*` env vars still override the *driver* knobs (see [Long-horizon runs](#long-horizon-runs)).
+Knobs live in [`experiment.toml`](experiment.toml): `[experiment]`/`[executor]`/`[reducer]` feed the build, `[driver]` feeds the run. Requires `auspexai-tenant>=0.6.51` (the documented `--detach` concurrent flow). The legacy `VIGILES_*` env vars still override the *driver* knobs (see [Long-horizon runs](#long-horizon-runs)).
 
 The whole lifecycle is one command (build → submit → await approval → drive):
 
@@ -41,7 +41,7 @@ auspexai-tenant experiment submit pkg/ --key <vigiles_key>
 auspexai-tenant experiment run latest --key <vigiles_key> --doorbell
 ```
 
-Generation is deterministic per unit: the worker's inference broker pins `temperature=0` + the seed and authorizes only the manifest's exact model id (a `temperature>0` manifest is rejected at submit today; seeded sampling arrives with manifest v0.2-M1). **Consensus, however, is tolerance-based, not byte-based**: identical prompts on different Ollama versions can produce byte-different output, so replicas agree when their declared features fall within the calibrated `comparison` envelope; the attested consensus value is a deterministic *representative* of the agreeing set, and outliers are recorded in the divergence index. The manifest declares the model with `local_weights_required`, which routes units only to workers that hold + serve it.
+Generation is deterministic per unit: the worker's inference broker pins `temperature=0` + the seed and authorizes only the manifest's exact model id (seeded sampling — `temperature>0` with a pinned seed, manifest v0.5 — is now honored per-request; sampled replicas use a non-agreement collection mode since they legitimately differ run-to-run). **Consensus, however, is tolerance-based, not byte-based**: identical prompts on different Ollama versions can produce byte-different output, so replicas agree when their declared features fall within the calibrated `comparison` envelope; the attested consensus value is a deterministic *representative* of the agreeing set, and outliers are recorded in the divergence index. The manifest declares the model with `local_weights_required`, which routes units only to workers that hold + serve it.
 
 If your analysis genuinely changes after you've seen data, declare it — append-only and signed, never an edit of the pre-registration:
 
