@@ -761,3 +761,94 @@ round_interval_seconds = 0
 max_rounds = 100000
 stable_rounds = 100000
 unit_prefix = "o10ds"
+
+# ── gpt-oss-20b det-vs-sampling pair (2026-07-13): one model, both generation policies ──
+# The USER ask: run gpt-oss-20b overnight under BOTH a deterministic (greedy, temp 0)
+# and a seeded-sampling (temp 0.8) policy — the same det-vs-sampling contrast the
+# overnight10 mistral panels ran, on OpenAI's gpt-oss-20b (21B total / ~3.6B active
+# MoE, native MXFP4). Servable single-file GGUF = ggml-org/gpt-oss-20b-mxfp4.gguf,
+# 12.11 GB (the canonical llama.cpp conversion of the released MXFP4 weights).
+# Fleet-fit (footprint x 1.2 serve overhead): 12.11 -> ~14.5 GB effective, which fits
+# ONLY the 22 GB Mac (wkr-Ls6…); the 5.44 GB usable Jetson mayhems cannot hold it -> both
+# legs run repl-1 process_only ON THE MAC (repl-2 on a single-capable-worker fleet strands
+# units at 1-of-2). Both experiments declare the SAME model_id, so the broker serves ONE
+# gpt-oss-20b handle and injects the per-request generation policy (greedy vs sampled) —
+# they interleave on the one Mac worker rather than double-loading 12 GB. gpt-oss is a
+# reasoning model: its responses carry a chain-of-thought and are far longer/more variable
+# than the gemma baseline, so both legs are EXPECTED to exit the C7 gemma-calibrated
+# envelope (the cross-model contrast posture — the reference is the drift baseline, not a
+# same-model null). Fresh prefixes (o10gs / o10dgs) + labels so nothing collides.
+# ⚠ Requires the Mac's Ollama to support the gpt-oss architecture (Ollama >= 0.11 / recent
+# llama.cpp); confirm on the Mac before launch.
+
+[profiles.overnight10_gptoss]
+description = "10h gpt-oss-20b SEEDED SAMPLING drift: temp 0.8, top_p 0.9, process_only, back-to-back, repl-1 (Mac-only; 12.11 GB MXFP4 exceeds the Jetson serve budget)."
+[profiles.overnight10_gptoss.reducer]
+kind = "builtin_process_only"
+[profiles.overnight10_gptoss.determinism]
+temperature = 0.8
+top_p = 0.9
+seed = 0
+[profiles.overnight10_gptoss.experiment]
+label = "vigiles-overnight10-gptoss"
+model_id = "gpt-oss-20b-mxfp4"
+model_version = "1.0"
+hf_repo = "ggml-org/gpt-oss-20b-GGUF"
+hf_filename = "gpt-oss-20b-mxfp4.gguf"
+duration_hours = 10
+replication = 1
+research_goal = "10-hour seeded-sampling (temperature 0.8, top_p 0.9, pinned seed 0) run of OpenAI gpt-oss-20b (native MXFP4, single-file GGUF) on the unchanged Vigiles probe panel, process_only collection, back-to-back rounds, replication 1 on the Mac (its ~12.1 GB / ~14.5 GB-with-serve-overhead footprint fits only the 22 GB Mac worker) — the sampling half of the gpt-oss det-vs-sampling contrast, benchmarked against the C7 calibration baseline."
+prompt_characteristics = "The unchanged fixed Vigiles probe panel under seeded sampling (temperature 0.8) against a 20B reasoning model — non-deterministic, chain-of-thought-bearing generation; only lexical summary features are analyzed (no raw text retained)."
+[profiles.overnight10_gptoss.feature_schema."model.id"]
+categories = ["gpt-oss-20b-mxfp4"]
+[profiles.overnight10_gptoss.pre_registration]
+hypothesis = "under seeded sampling (temperature 0.8, top_p 0.9, pinned seed 0), each fixed Vigiles probe's output is reproducible within a worker across the 10-hour horizon (the seed pins the sampler); a post-stability exit of a probe's lexical feature signature from its comparison envelope is a drift event attributable to the serving stack, the pinned weights held constant. Null = within-envelope stability throughout. NB: as a cross-model contrast vs the gemma C7 baseline, the envelope is expected to be exceeded on absolute footing; the drift signal is the WITHIN-RUN trajectory."
+analysis_method = "per probe_id, track the lexical feature vector (type_token_ratio, top_tokens) across the back-to-back rounds on the single serving worker (Mac); a sustained post-stability exit from the declared comparison envelope is the drift signal. Replication 1 (Mac-only: the 12.11 GB MXFP4 footprint exceeds the 5.44 GB Jetson serve budget), so this is a single-worker sampling trajectory; corroboration is process_only because seeded sampling is not byte-reproducible across Ollama versions (C15)."
+features = ["lexical.type_token_ratio", "lexical.top_tokens", "response_sha256"]
+timescale = "long_horizon"
+decision_rule = "drift IFF a probe's lexical feature vector exits its declared comparison envelope after initial within-run stability, sustained across consecutive rounds"
+expected_result = "descriptive: characterize gpt-oss-20b's seeded-sampling lexical stability over 10h; null = at least one probe exits its envelope post-stability (a serving-stack drift event)"
+stopping_rule = "fixed 10h duration (run_seconds=36000), declared up front - not data-peeking-dependent"
+comparison_keys = ["probe_id"]
+min_replication = 1
+[profiles.overnight10_gptoss.driver]
+run_seconds = 36000
+round_interval_seconds = 0
+max_rounds = 100000
+stable_rounds = 100000
+unit_prefix = "o10gs"
+
+[profiles.overnight10det_gptoss]
+description = "10h gpt-oss-20b DETERMINISTIC (greedy, temp 0) drift: process_only, back-to-back, repl-1 (Mac-only; 12.11 GB MXFP4 exceeds the Jetson serve budget)."
+[profiles.overnight10det_gptoss.reducer]
+kind = "builtin_process_only"
+[profiles.overnight10det_gptoss.determinism]
+temperature = 0.0                      # greedy (temp 0); NO sampling knobs — the SDK rejects top_p/seed at temp 0
+[profiles.overnight10det_gptoss.experiment]
+label = "vigiles-overnight10det-gptoss"
+model_id = "gpt-oss-20b-mxfp4"
+model_version = "1.0"
+hf_repo = "ggml-org/gpt-oss-20b-GGUF"
+hf_filename = "gpt-oss-20b-mxfp4.gguf"
+duration_hours = 10
+replication = 1
+research_goal = "10-hour DETERMINISTIC (greedy, temperature 0) run of OpenAI gpt-oss-20b (native MXFP4, single-file GGUF) on the unchanged Vigiles probe panel, process_only collection, back-to-back rounds, replication 1 on the Mac (its ~12.1 GB / ~14.5 GB-with-serve-overhead footprint fits only the 22 GB Mac worker) — the greedy half of the gpt-oss det-vs-sampling contrast, benchmarked against the C7 calibration baseline."
+prompt_characteristics = "The unchanged fixed Vigiles probe panel at temperature 0 (greedy, no sampler) against a 20B reasoning model — deterministic, chain-of-thought-bearing generation; only lexical summary features are analyzed (no raw text retained)."
+[profiles.overnight10det_gptoss.feature_schema."model.id"]
+categories = ["gpt-oss-20b-mxfp4"]
+[profiles.overnight10det_gptoss.pre_registration]
+hypothesis = "at temperature 0 (greedy decoding), each fixed Vigiles probe's output is byte-reproducible within a worker across the 10-hour horizon (the weights and greedy policy are pinned); a post-stability exit of a probe's lexical feature signature from its comparison envelope is a drift event attributable to the serving stack, the pinned weights held constant. Null = within-envelope stability throughout. NB: as a cross-model contrast vs the gemma C7 baseline, the envelope is expected to be exceeded on absolute footing; the drift signal is the WITHIN-RUN trajectory."
+analysis_method = "per probe_id, track the lexical feature vector (type_token_ratio, top_tokens) across the back-to-back rounds on the single serving worker (Mac); a sustained post-stability exit from the declared comparison envelope is the drift signal. Replication 1 (Mac-only: the 12.11 GB MXFP4 footprint exceeds the 5.44 GB Jetson serve budget), so this is a single-worker greedy trajectory; collection is process_only (each replica an independent receipted observation)."
+features = ["lexical.type_token_ratio", "lexical.top_tokens", "response_sha256"]
+timescale = "long_horizon"
+decision_rule = "drift IFF a probe's lexical feature vector exits its declared comparison envelope after initial within-run stability, sustained across consecutive rounds"
+expected_result = "descriptive: characterize gpt-oss-20b's greedy (temp 0) lexical stability over 10h; null = at least one probe exits its envelope post-stability (a serving-stack drift event)"
+stopping_rule = "fixed 10h duration (run_seconds=36000), declared up front - not data-peeking-dependent"
+comparison_keys = ["probe_id"]
+min_replication = 1
+[profiles.overnight10det_gptoss.driver]
+run_seconds = 36000
+round_interval_seconds = 0
+max_rounds = 100000
+stable_rounds = 100000
+unit_prefix = "o10dgs"
