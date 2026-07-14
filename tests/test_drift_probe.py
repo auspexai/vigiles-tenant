@@ -247,9 +247,15 @@ def test_next_batch_reruns_full_panel_with_fixed_seed():
 
 def _cfg(**driver):
     """A resolved ExperimentConfig the CLI would hand to build(cfg). Driver-logic
-    tests pass an explicit (or empty) [driver] table; env vars still override."""
+    tests pass an explicit (or empty) [driver] table; env vars still override.
+
+    Default `baseline_rounds=0` so the stability/duration/knob suites exercise the
+    convergence logic in ISOLATION (legacy D6 semantics unchanged). The production
+    default (BASELINE_ROUNDS=5) and the baseline phase itself have dedicated tests
+    below — pass an explicit `baseline_rounds=` to opt into it."""
     from auspexai_tenant.experiment_config import ExperimentConfig
 
+    driver.setdefault("baseline_rounds", 0)
     return ExperimentConfig(driver=dict(driver))
 
 
@@ -325,8 +331,8 @@ def test_duration_mode_keeps_issuing_past_stability_until_elapsed(monkeypatch):
         clock.advance(10.0)  # each round takes 10 s of fake wall-clock
         rounds += 1
 
-    # A D6 (stability) run converges after baseline + STABLE_ROUNDS = 4 rounds;
-    # duration mode ran the clock out instead: 100 s at 10 s/round = 10 rounds.
+    # A D6 (stability) run converges after round-0 warmup + STABLE_ROUNDS = 4 rounds
+    # (baseline disabled here); duration mode ran the clock out: 100 s @ 10 s = 10.
     assert rounds == 10
     assert rounds > drift_driver.STABLE_ROUNDS + 1
 
@@ -415,16 +421,151 @@ def test_defaults_unchanged_when_env_unset(monkeypatch):
 
     monkeypatch.setattr(drift_driver, "_sleep", _boom)
     monkeypatch.setattr(drift_driver, "_now", _boom)
-    spec = drift_driver.build(_cfg())
+    spec = drift_driver.build(_cfg())  # _cfg default disables the baseline → pure D6
     assert spec.max_rounds == drift_driver.MAX_ROUNDS == 50
     agg = Counter(bucket=drift_driver._bucket)
     for rnd in range(2):  # rnd > 0 exercises the (absent) cadence branch
         units = spec.next_batch(agg, rnd)
         assert len(units) == len(drift_driver.PROBES)
-    # Stability convergence verdict is unchanged (baseline + STABLE_ROUNDS).
+    # Stability convergence verdict is unchanged (baseline disabled → streak only).
     verdicts = []
     for _ in range(1 + drift_driver.STABLE_ROUNDS):
         for p, h in STABLE_PANEL:
             agg.fold(_consensus(p, h))
         verdicts.append(spec.condition(agg))
     assert verdicts == [False, False, False, True]
+
+
+# ---- self-baseline phase (baseline_rounds, K) — the first K rounds calibrate ----
+# ---- this model's OWN reference, then drift is measured from it (§3.1)        ----
+
+
+def _drive(spec, panels):
+    """Replicate the raw run_until loop shape: `condition` is checked ONCE per round
+    at the top (BEFORE that round's `next_batch`, which records `phase['round']`),
+    then the round is folded. So the r-th verdict sees exactly r rounds of data —
+    identical to production. Returns (verdicts, aggregate); stops at first True,
+    like the loop breaking before it issues the converged round."""
+    agg = Counter(bucket=drift_driver._bucket)
+    verdicts = []
+    for rnd, panel in enumerate(panels):
+        v = spec.condition(agg)  # top-of-loop check: sees rounds 0..rnd-1
+        verdicts.append(v)
+        if v:
+            return verdicts, agg  # converged — the loop would break before issuing
+        spec.next_batch(agg, rnd)  # records phase['round']=rnd
+        for p, h in panel:
+            agg.fold(_consensus(p, h))
+    verdicts.append(spec.condition(agg))
+    return verdicts, agg
+
+
+def test_baseline_defers_convergence_until_the_full_window():
+    """The floor: with K=6, a perfectly stable panel that WOULD converge on stability
+    at round 4 (streak >= STABLE_ROUNDS) is held back — the run spends the whole
+    baseline window and converges exactly at round K, freezing a K-round reference."""
+    verdicts, _ = _drive(drift_driver.build(_cfg(baseline_rounds=6)), [STABLE_PANEL] * 10)
+    assert verdicts.index(True) == 6  # deferred to the full baseline, not stability at 4
+    assert all(v is False for v in verdicts[:6])
+    # sanity: with the baseline disabled the same panel converges at 4 (streak only).
+    legacy, _ = _drive(drift_driver.build(_cfg(baseline_rounds=0)), [STABLE_PANEL] * 10)
+    assert legacy.index(True) == 4
+
+
+def test_baseline_rounds_default_is_five(monkeypatch):
+    """An untouched config (no [driver].baseline_rounds, env unset) uses the shipped
+    default BASELINE_ROUNDS=5 — Vigiles spends a self-baseline by DEFAULT, not opt-in."""
+    from auspexai_tenant.experiment_config import ExperimentConfig
+
+    monkeypatch.delenv("VIGILES_BASELINE_ROUNDS", raising=False)
+    assert drift_driver.BASELINE_ROUNDS == 5
+    verdicts, _ = _drive(drift_driver.build(ExperimentConfig(driver={})), [STABLE_PANEL] * 9)
+    assert verdicts.index(True) == 5
+
+
+def test_baseline_rounds_env_overrides_and_clamps_to_max_rounds(monkeypatch):
+    # env beats [driver].baseline_rounds=6; both exceed the streak point (4) so the
+    # baseline is the binding constraint and convergence lands exactly at K.
+    monkeypatch.setenv("VIGILES_BASELINE_ROUNDS", "8")
+    verdicts, _ = _drive(drift_driver.build(_cfg(baseline_rounds=6)), [STABLE_PANEL] * 12)
+    assert verdicts.index(True) == 8  # env (8), not config (6)
+    monkeypatch.delenv("VIGILES_BASELINE_ROUNDS")
+    # a baseline longer than the run is clamped to max_rounds — without the clamp,
+    # baseline=100 would defer past the run and it could never complete the window.
+    spec = drift_driver.build(_cfg(baseline_rounds=100, max_rounds=7))
+    verdicts, _ = _drive(spec, [STABLE_PANEL] * 12)
+    assert verdicts.index(True) == 7  # clamped to max_rounds (else it never converges)
+
+
+def test_monitoring_flags_drift_from_the_frozen_baseline(monkeypatch, caplog):
+    """After the K-round baseline freezes, a fixed probe producing a response ABSENT
+    from that baseline is drift FROM this model's own normal — logged as a DRIFT EVENT
+    'beyond the baseline'. Duration mode keeps monitoring past the baseline."""
+    _patch_clock(monkeypatch)
+    monkeypatch.setenv("VIGILES_RUN_SECONDS", "999999")  # never converge — keep monitoring
+    spec = drift_driver.build(_cfg(baseline_rounds=3))
+    agg = Counter(bucket=drift_driver._bucket)
+    caplog.set_level(logging.INFO, logger="vigiles.drift")
+
+    for rnd in range(3):  # rounds 0..2 establish the reference (3 stable buckets)
+        assert spec.condition(agg) is False  # in-baseline: never converges
+        spec.next_batch(agg, rnd)
+        for p, h in STABLE_PANEL:
+            agg.fold(_consensus(p, h))
+    assert spec.condition(agg) is False  # round-3 top check: freezes the baseline
+    assert any("baseline established: 3" in r.getMessage() for r in caplog.records)
+
+    spec.next_batch(agg, 3)  # first monitoring round
+    caplog.clear()
+    agg.fold(_consensus("p-greeting", "f" * 64))  # a NEW response for a fixed probe
+    for p, h in STABLE_PANEL[1:]:
+        agg.fold(_consensus(p, h))
+    assert spec.condition(agg) is False  # duration mode → no stop, but the event fires
+    events = [r.getMessage() for r in caplog.records if "DRIFT EVENT" in r.getMessage()]
+    assert len(events) == 1
+    assert "beyond the baseline" in events[0]
+    assert "p-greeting::ffffffffffff" in events[0]
+
+
+def test_baseline_absorbs_variation_so_it_is_not_flagged_in_monitoring(monkeypatch, caplog):
+    """A response first seen DURING the baseline (natural run-to-run variation, not
+    just round 0) is part of the reference set — its later reappearance in monitoring
+    is NOT drift. This is why the calibration window must be spent, not assumed."""
+    _patch_clock(monkeypatch)
+    monkeypatch.setenv("VIGILES_RUN_SECONDS", "999999")
+    spec = drift_driver.build(_cfg(baseline_rounds=4))
+    agg = Counter(bucket=drift_driver._bucket)
+
+    # Baseline rounds 0..3: p-greeting varies between two responses (a, then z) —
+    # both belong to this model's normal, so the frozen baseline holds both.
+    baseline_panels = [
+        STABLE_PANEL,
+        [("p-greeting", "z" * 64), *STABLE_PANEL[1:]],
+        STABLE_PANEL,
+        [("p-greeting", "z" * 64), *STABLE_PANEL[1:]],
+    ]
+    for rnd, panel in enumerate(baseline_panels):
+        assert spec.condition(agg) is False
+        spec.next_batch(agg, rnd)
+        for p, h in panel:
+            agg.fold(_consensus(p, h))
+    assert spec.condition(agg) is False  # freeze: baseline now holds greeting a AND z
+
+    caplog.set_level(logging.WARNING, logger="vigiles.drift")
+    # Monitoring: greeting flips back to 'a' (in baseline) — must NOT be a drift event.
+    spec.next_batch(agg, 4)
+    for p, h in STABLE_PANEL:
+        agg.fold(_consensus(p, h))
+    assert spec.condition(agg) is False
+    assert not [r for r in caplog.records if "DRIFT EVENT" in r.getMessage()]
+
+
+def test_next_batch_logs_baseline_and_monitoring_transitions(caplog):
+    spec = drift_driver.build(_cfg(baseline_rounds=3))
+    agg = Counter(bucket=drift_driver._bucket)
+    caplog.set_level(logging.INFO, logger="vigiles.drift")
+    for rnd in range(5):
+        spec.next_batch(agg, rnd)
+    msgs = "\n".join(r.getMessage() for r in caplog.records)
+    assert "baseline phase: establishing" in msgs
+    assert "monitoring phase begins (round 3)" in msgs

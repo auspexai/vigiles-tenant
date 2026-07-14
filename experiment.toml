@@ -151,6 +151,7 @@ round_interval_seconds = 0             # 0 = no sleep (fast first keystone run);
 run_seconds = 0                        # 0 = converge-on-stability; >0 = duration mode (long-horizon)
 max_rounds = 50                        # client-side round guard (raise for long-horizon: ~96 for 8h@300s)
 stable_rounds = 3                      # consecutive no-new-bucket rounds → converged
+baseline_rounds = 5                    # self-baseline (self_baseline_drift_design.md): first K rounds CALIBRATE this model's own reference set; drift is then measured FROM that baseline (not from Gemma). 0 = legacy D6. The run never converges before K elapses.
 unit_prefix = "d6"                     # unit-id prefix (a run-distinct tag)
 
 # ── Profiles (Phase-3 released-capability model — vigiles_onramp_phase3_design.md §3) ──
