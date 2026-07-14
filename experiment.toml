@@ -233,7 +233,7 @@ stable_rounds = 3
 # (↔0.30.11) deltas feed ONLY the §7 decision-gate memo — never the envelope,
 # pre-ratification. Probe panel / seed / num_predict inherited UNCHANGED: calibration
 # must measure the same panel the drift study runs, so the noise floor transfers.
-description = "C7 tolerance-envelope calibration: fixed-volume (25 rounds × 3 probes), repl-3 all-config raw-spread collection; offline pairwise delta analysis per c7_calibration_campaign.md; placeholder envelope not consulted."
+description = "C7 tolerance-envelope calibration: fixed-volume (25 rounds × 12 probes = 300 units), repl-3 all-config raw-spread collection; offline pairwise delta analysis per c7_calibration_campaign.md; placeholder envelope not consulted."
 
 [profiles.calibration.benchmark]
 reference = ""  # this run IS the baseline — it scores against nothing
@@ -242,14 +242,15 @@ reference = ""  # this run IS the baseline — it scores against nothing
 label = "vigiles-c7-calibration"
 replication = 3                        # target = N_configs (campaign §3): the same unit executes on every config. C14 default floor (2) lets a unit settle if one config is briefly unavailable — that unit just contributes fewer cross-pairs.
 duration_hours = 1
-research_goal = "C7 tolerance-envelope calibration (spec: c7_calibration_campaign.md). Characterize the per-feature legitimate cross-worker noise floor by re-running the fixed Vigiles probe panel at replication = N_configs, so every work unit executes on every fleet config (linux/aarch64 Ollama 0.17.7, linux/aarch64 Ollama 0.18.2, darwin/arm64 Ollama 0.30.11). Analysis consumes the raw per-replica feature payloads offline: pairwise per-feature deltas, stratified within-band vs cross-band, per probe (§8 noise-vs-signal criterion applied per delta). Fixed volume — 25 rounds x 3 probes = 75 units (~225 executions); no early convergence (stable_rounds unreachable); stops at max_rounds. Output feeds the calibrated envelope + the Phase-0->Phase-1 decision-gate memo (0.30.11 cell-vs-drift)."
-prompt_characteristics = "The unchanged fixed Vigiles probe panel (greeting, arithmetic, enumeration) at temperature 0 with the pinned seed — identical inputs to the drift study; only the replication, volume, and analysis intent differ."
+research_goal = "C7 tolerance-envelope calibration (spec: c7_calibration_campaign.md). Characterize the per-feature legitimate cross-worker noise floor by re-running the fixed Vigiles probe panel at replication = N_configs, so every work unit executes on every fleet config (linux/aarch64 Ollama 0.17.7, linux/aarch64 Ollama 0.18.2, darwin/arm64 Ollama 0.30.11). Analysis consumes the raw per-replica feature payloads offline: pairwise per-feature deltas, stratified within-band vs cross-band, per probe (§8 noise-vs-signal criterion applied per delta). Fixed volume — 25 rounds x 12 probes = 300 units (~900 executions); no early convergence (stable_rounds unreachable); stops at max_rounds. Output feeds the calibrated envelope + the Phase-0->Phase-1 decision-gate memo (0.30.11 cell-vs-drift)."
+prompt_characteristics = "The unchanged fixed 12-probe Vigiles panel at temperature 0 with the pinned seed — identical inputs to the drift study; only the replication, volume, and analysis intent differ."
 
 [profiles.calibration.driver]
 run_seconds = 0                        # NOT duration mode — fixed round count below
 round_interval_seconds = 0             # back-to-back; calibration measures cross-worker spread, not temporal drift
-max_rounds = 25                        # THE volume knob: 25 rounds × 3 probes = 75 units × 3 replicas ≈ 225 executions (campaign §3)
+max_rounds = 25                        # THE volume knob: 25 rounds × 12 probes = 300 units × 3 replicas ≈ 900 executions (campaign §3)
 stable_rounds = 1000                   # deliberately unreachable — a fixed-volume run must not converge-on-stability early; it stops at max_rounds
+baseline_rounds = 0                    # NOT a self-baseline drift study: fixed-volume raw-spread collection, analyzed offline — the driver's baseline phase is irrelevant here (avoids spurious drift-event log noise)
 unit_prefix = "cal"
 
 [profiles.research]
@@ -304,7 +305,7 @@ hf_repo = "bartowski/Qwen2.5-0.5B-Instruct-GGUF"          # ungated (apache-2.0)
 hf_filename = "Qwen2.5-0.5B-Instruct-Q4_K_M.gguf"         # verified present in the repo tree 2026-07-02
 replication = 2                                           # mayhem-pair floor; the Qwen replicas agree with each other (same model) — the divergence tested is cross-MODEL, offline vs the gemma reference
 duration_hours = 1
-research_goal = "C7 §5 rejection validation (c7_calibration_campaign.md §5). Run the UNCHANGED Vigiles probe panel (greeting, arithmetic, enumeration) at temperature 0 / pinned seed against a deliberately DIFFERENT model (Qwen2.5-0.5B-Instruct) to prove the calibration-tightened tolerance envelope still FLAGS genuine divergence. Analysis is offline and mirrors the Phase-0 cross-band method: compare Qwen's per-probe light features (type_token_ratio, top_tokens, counts) to the gemma-3-1b-it-q4 reference from the drift/calibration study and confirm every delta exceeds the tightened envelope (type_token_ratio rel 0.02, top_tokens set_jaccard 0.9). Fixed tiny volume (3 rounds x 3 probes)."
+research_goal = "C7 §5 rejection validation (c7_calibration_campaign.md §5). Run the UNCHANGED fixed 12-probe Vigiles panel at temperature 0 / pinned seed against a deliberately DIFFERENT model (Qwen2.5-0.5B-Instruct) to prove the calibration-tightened tolerance envelope still FLAGS genuine divergence. Analysis is offline and mirrors the Phase-0 cross-band method: compare Qwen's per-probe light features (type_token_ratio, top_tokens, counts) to the gemma-3-1b-it-q4 reference from the drift/calibration study and confirm every delta exceeds the tightened envelope (type_token_ratio rel 0.02, top_tokens set_jaccard 0.9). Fixed tiny volume (3 rounds x 12 probes = 36 units)."
 prompt_characteristics = "The unchanged fixed Vigiles probe panel at temperature 0 / pinned seed — identical inputs to the drift study; only the served model differs (Qwen2.5-0.5B-Instruct in place of gemma-3-1b-it-q4)."
 
 # D19 proving run (2026-07-03): the profile now runs OBSERVE-ONLY. Under the
@@ -320,8 +321,9 @@ kind = "builtin_process_only"
 [profiles.contrast_model.driver]
 run_seconds = 0                        # NOT duration mode
 round_interval_seconds = 0             # back-to-back
-max_rounds = 3                         # tiny fixed volume: 3 rounds x 3 probes = 9 units x repl-2 ≈ 18 executions (minutes)
+max_rounds = 3                         # tiny fixed volume: 3 rounds x 12 probes = 36 units x repl-2 ≈ 72 executions (minutes)
 stable_rounds = 1000                   # unreachable — fixed-volume, stops at max_rounds
+baseline_rounds = 0                    # rejection test, not a self-baseline drift study; a 5-round baseline can't fit a 3-round run anyway (would clamp to 3 = all-baseline, no monitoring)
 unit_prefix = "ctr"
 
 # The different model changes the ONLY model-pinned category in the feature schema. Without this
@@ -356,7 +358,7 @@ description = "C7 §5 temp>0 contrast: unchanged model/panel/seed under declared
 label = "vigiles-c7-contrast-sampling"
 replication = 1                        # process-only: each replica an independent sample (§3c); T2 tier floor permits repl-1
 duration_hours = 1
-research_goal = "C7 §5 temp>0 contrast (deferred leg, now runnable under manifest v0.5 seeded sampling). Run the UNCHANGED Vigiles probe panel (greeting, arithmetic, enumeration) against the UNCHANGED gemma-3-1b-it-q4 with the SAME pinned seed, changing ONLY the declared generation policy: temperature 0.8 with top_p 0.9 (manifest-declared; the worker broker injects the policy per-request — the §47 seeded-sampling rung). Analysis is offline and mirrors the Phase-0 cross-band method: compare per-probe light features (type_token_ratio, top_tokens, counts, response_sha256) to the gemma temp0 reference from the drift/calibration studies, per probe. Expected: the open-ended greeting probe exits the tightened envelope (TTR rel 0.02, top_tokens jaccard 0.9); constrained probes may legitimately match at low entropy. Fixed tiny volume (3 rounds x 3 probes = 9 units at repl-1), minutes. Also the first production proof of the v0.5 generation-policy chain end-to-end (declare -> submit gate -> feature-routed dispatch -> per-request broker enforcement -> generation footprint)."
+research_goal = "C7 §5 temp>0 contrast (deferred leg, now runnable under manifest v0.5 seeded sampling). Run the UNCHANGED fixed 12-probe Vigiles panel against the UNCHANGED gemma-3-1b-it-q4 with the SAME pinned seed, changing ONLY the declared generation policy: temperature 0.8 with top_p 0.9 (manifest-declared; the worker broker injects the policy per-request — the §47 seeded-sampling rung). Analysis is offline and mirrors the Phase-0 cross-band method: compare per-probe light features (type_token_ratio, top_tokens, counts, response_sha256) to the gemma temp0 reference from the drift/calibration studies, per probe. Expected: the open-ended greeting probe exits the tightened envelope (TTR rel 0.02, top_tokens jaccard 0.9); constrained probes may legitimately match at low entropy. Fixed tiny volume (3 rounds x 12 probes = 36 units at repl-1), minutes. Also the first production proof of the v0.5 generation-policy chain end-to-end (declare -> submit gate -> feature-routed dispatch -> per-request broker enforcement -> generation footprint)."
 prompt_characteristics = "The unchanged fixed Vigiles probe panel at the SAME pinned seed (0) — identical inputs to the drift study; only the declared generation policy differs (seeded sampling temp 0.8 / top_p 0.9 in place of greedy temp 0)."
 
 # The declared generation policy (manifest v0.5, inference_determinism):
@@ -372,8 +374,9 @@ seed = 0
 [profiles.contrast_sampling.driver]
 run_seconds = 0                        # NOT duration mode
 round_interval_seconds = 0             # back-to-back
-max_rounds = 3                         # tiny fixed volume: 3 rounds x 3 probes = 9 units x repl-1 = 9 executions (minutes)
+max_rounds = 3                         # tiny fixed volume: 3 rounds x 12 probes = 36 units x repl-1 = 36 executions (minutes)
 stable_rounds = 1000                   # unreachable — fixed-volume, stops at max_rounds
+baseline_rounds = 0                    # temp>0 rejection contrast, not a self-baseline drift study; a 5-round baseline can't fit a 3-round run anyway (would clamp to 3 = all-baseline, no monitoring)
 unit_prefix = "cts"
 
 # ── Weekend endurance campaign (2026-07-04/06): 3 models × 48h, benchmarked ──
