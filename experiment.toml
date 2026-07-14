@@ -27,7 +27,7 @@ replication = 2                        # C7 (2026-06-29): within_cell_tolerance@
 duration_hours = 1                     # → manifest expected_duration_hours
 sensitive_content_flags = []           # e.g. ["jailbreak"] → also needs an approver attestation
 research_goal = "Vigiles D6 — the first real tenant: a deterministic behavioral-drift probe panel run against a worker-served local LLM through the AuspexAI inference broker. Each work unit re-runs a fixed probe at temperature 0 with a pinned seed; the executor reduces the response to a sha256 anchor plus light lexical features (no raw text — Research Ethics §7 containment) and the adaptive driver folds the per-probe consensus hashes into a Counter, converging once every probe's consensus response holds stable across consecutive rounds. Exercises the full local-LLM execution path (W-S model serving + sandbox inference broker) and the persisted, Rekor-anchored result-set attestation end-to-end."
-prompt_characteristics = "A small fixed panel of neutral instruction-following probes (greeting, arithmetic, enumeration) carried in each unit's payload; re-run every round with a constant seed so a changed consensus hash is the drift signal."
+prompt_characteristics = "A fixed 12-probe panel of neutral prompts spanning distinct behavior types (open-ended, arithmetic, reasoning, factual recall, list, enumeration, strict JSON format, classification, translation, constrained generation, code, and a benign safety-decline) carried in each unit's payload; re-run every round with a constant seed so a changed consensus hash is the drift signal. The wider panel gives breadth real resolution (~8%) instead of quartering on 3 probes."
 
 [executor]
 command = ["python", "executor.py"]    # run inside pkg/; package_sha256 is digested over pkg/
@@ -64,7 +64,7 @@ meaning = "which fixed probe produced this row"
 kind = "categorical"
 role = "key"                           # the primary drift/comparison join coordinate
 change_means = "a different probe produced this row"
-categories = ["p-greeting", "p-instruction", "p-refusal"]
+categories = ["p-greeting", "p-arithmetic", "p-reasoning", "p-fact", "p-list", "p-enumerate", "p-format-json", "p-classify", "p-translate", "p-constrained", "p-code", "p-refusal"]
 
 [feature_schema."response_sha256"]
 meaning = "SHA-256 of the raw model output — the authoritative byte-level drift anchor"
