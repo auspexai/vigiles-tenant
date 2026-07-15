@@ -694,13 +694,14 @@ unit_prefix = "o10dgs"
 # sensitive_content_flags → the run does NOT auto-approve (routine_no_sensitive_flags fails) → per-
 # experiment REVIEW; permitted at R3. (2) collection is R3-gated + audited + one-time-read + evicts.
 # Fleet-fit: gpt-oss is Mac-only (repl-1); Phi-3.5-mini (2.39 GB) + Qwen3-4B (2.50 GB) fit the Jetsons
-# (repl-2 mayhem pair). Fresh prefixes (cap{g,p,q}{s,d}). Requires tenant-sdk >= 0.6.58 — the release
-# that HARVESTS the buffered raw live during the run (RawContentCollector, polling GET /raw-content
-# every 180s into runs/<label>/raw_content.jsonl); >= 0.6.59 additionally makes `experiment export`
-# honor [runs].dir so bundle.json co-locates with raw_content.jsonl in the same runs/<label>/ dir. On an
-# older SDK the run still flags + buffers raw, but nothing collects it and the buffer evicts after the
-# coordinator's 1h TTL. vigiles-lab is R3 → collection is authorized. Because raw_content_capture is a
-# sensitive flag, each of the six requires a per-experiment REVIEW (they do NOT auto-approve).
+# (repl-2 mayhem pair). Fresh prefixes (cap{g,p,q}{s,d}). Requires tenant-sdk >= 0.6.60 — the release
+# that lets a `[capture] raw` manifest BUILD at all (0.6.58/0.6.59's Manifest validator rejected the
+# capture member + raw_content_capture flag → every capture build failed). 0.6.60 also carries the live
+# HARVEST (RawContentCollector polls GET /raw-content every 180s into runs/<label>/raw_content.jsonl,
+# 0.6.58) and makes `experiment export` co-locate bundle.json there via [runs].dir (0.6.59). On an older
+# SDK these profiles won't build. vigiles-lab is R3 → collection is authorized. raw_content_capture is a
+# review-routing flag (NOT an approver/ethics gate), so each of the six needs a per-experiment REVIEW
+# (does NOT auto-approve) but requires no approver_attestations.
 
 [profiles.capture_gptoss]
 description = "10h OpenAI gpt-oss-20b (native MXFP4, single-file GGUF) seeded-sampling drift WITH raw-content capture (D20): process_only, back-to-back, repl-1 (Mac-only); self-baselined; forces per-experiment review (R3)."
