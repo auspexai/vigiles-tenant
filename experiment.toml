@@ -174,13 +174,17 @@ unit_prefix = "d6"                     # unit-id prefix (a run-distinct tag)
 dir = "~/.local/share/auspexai-tenant/runs"
 
 # ── Drift Benchmark declaration ──────────────────────────────────────────────
-# Every monitoring/contrast run scores against the C7 calibration baseline
-# (exp-D2OGQK32 — its signed manifest defines the envelope). Declared HERE, at
-# launch, before any data exists (the pre-registration posture): the dashboard
-# materializes the score automatically; nobody chooses a comparison after the
-# fact. Baseline-producing profiles switch this OFF with reference = "".
+# Every drift-study run scores against its OWN self-baseline: the first K rounds
+# (K = [driver].baseline_rounds) establish this model's own normal, and the
+# monitoring rounds (round >= K) are scored against them — drift from the model's
+# OWN behavior over the run, NOT distance to a fixed anchor model
+# (self_baseline_drift_design.md §3.1; the Gemma anchor exp-D2OGQK32 is retired).
+# Declared HERE, at launch, before any data exists (the pre-registration posture);
+# the dashboard materializes the self-drift score automatically. Profiles that
+# produce no self-baseline (the calibration raw-spread run) switch this OFF with
+# reference = "" — which, being a scalar, cleanly overrides the inherited "self".
 [benchmark]
-reference = "exp-D2OGQK32"
+reference = "self"                     # self_baseline mode (alias); the reference is this run's own first-K baseline rounds
 
 [profiles.starter]
 # The declawed on-ramp face: benign fixed probe panel, converge-on-stability,
@@ -285,107 +289,14 @@ round_interval_seconds = 300           # temporally-spaced (5-min cadence)
 max_rounds = 120                       # ~96 rounds for 8h@300s, with headroom
 stable_rounds = 3
 
-[profiles.contrast_model]
-# C7 §5 rejection validation — "the envelope must still BITE" (c7_calibration_campaign.md §5;
-# c7_phase0_decision_memo.md §3). A deliberately DIFFERENT model (Qwen2.5-0.5B-Instruct) on the
-# UNCHANGED probe panel at temp0 / pinned seed, like the drift study. Both mayhems serve the same
-# Qwen build, so they agree WITH EACH OTHER (byte-identical, like the within-band gemma floor); the
-# rejection test is OFFLINE, mirroring the Phase-0 cross-band method — compare Qwen's per-probe
-# features to the gemma-3-1b-it-q4 reference and confirm every delta EXCEEDS the tightened envelope
-# (type_token_ratio rel 0.02, top_tokens set_jaccard 0.9). Fixed tiny volume (3 rounds), minutes.
-# The §5 temp>0 contrast is DEFERRED to v0.2 M1 seeded-sampling (inference_determinism_scoping_memo.md):
-# the broker forbids temp>0 today, so a different-MODEL divergence is the runnable bite-test now.
-description = "C7 §5 rejection validation: a deliberately different model (Qwen2.5-0.5B-Instruct) on the unchanged panel; offline cross-model deltas must exceed the tightened envelope."
-
-[profiles.contrast_model.experiment]
-label = "vigiles-c7-contrast-model"
-model_id = "qwen2.5-0.5b-instruct-q4"                     # distinct routing id → distinct served handle auspex-qwen2.5-0.5b-instruct-q4
-model_version = "1.0"
-hf_repo = "bartowski/Qwen2.5-0.5B-Instruct-GGUF"          # ungated (apache-2.0); lazy auto-acquire pulls it in-line on a worker that lacks it
-hf_filename = "Qwen2.5-0.5B-Instruct-Q4_K_M.gguf"         # verified present in the repo tree 2026-07-02
-replication = 2                                           # mayhem-pair floor; the Qwen replicas agree with each other (same model) — the divergence tested is cross-MODEL, offline vs the gemma reference
-duration_hours = 1
-research_goal = "C7 §5 rejection validation (c7_calibration_campaign.md §5). Run the UNCHANGED fixed 12-probe Vigiles panel at temperature 0 / pinned seed against a deliberately DIFFERENT model (Qwen2.5-0.5B-Instruct) to prove the calibration-tightened tolerance envelope still FLAGS genuine divergence. Analysis is offline and mirrors the Phase-0 cross-band method: compare Qwen's per-probe light features (type_token_ratio, top_tokens, counts) to the gemma-3-1b-it-q4 reference from the drift/calibration study and confirm every delta exceeds the tightened envelope (type_token_ratio rel 0.02, top_tokens set_jaccard 0.9). Fixed tiny volume (3 rounds x 12 probes = 36 units)."
-prompt_characteristics = "The unchanged fixed Vigiles probe panel at temperature 0 / pinned seed — identical inputs to the drift study; only the served model differs (Qwen2.5-0.5B-Instruct in place of gemma-3-1b-it-q4)."
-
-# D19 proving run (2026-07-03): the profile now runs OBSERVE-ONLY. Under the
-# tolerance reducer the §5 rejection test correctly produced 0 receipts (Qwen
-# cross-version-diverged 9/9) — proving the envelope BITES, but leaving nothing
-# custody-verifiable to benchmark. Observe-only makes every replica a receipted,
-# exportable observation (bundle schema v2 carries ALL of them), so the same
-# cross-model contrast scores through the researcher-facing path: expected
-# ~10 EU peak / 100% breadth vs the calibration reference.
-[profiles.contrast_model.reducer]
-kind = "builtin_process_only"
-
-[profiles.contrast_model.driver]
-run_seconds = 0                        # NOT duration mode
-round_interval_seconds = 0             # back-to-back
-max_rounds = 3                         # tiny fixed volume: 3 rounds x 12 probes = 36 units x repl-2 ≈ 72 executions (minutes)
-stable_rounds = 1000                   # unreachable — fixed-volume, stops at max_rounds
-baseline_rounds = 0                    # rejection test, not a self-baseline drift study; a 5-round baseline can't fit a 3-round run anyway (would clamp to 3 = all-baseline, no monitoring)
-unit_prefix = "ctr"
-
-# The different model changes the ONLY model-pinned category in the feature schema. Without this
-# override the coordinator REJECTS every Qwen result at ingest (out-of-category model.id, §7
-# enforcement). The recursive profile deep-merge reaches this nested table; the other model.id
-# schema fields (meaning/kind/role/change_means) are inherited unchanged.
-[profiles.contrast_model.feature_schema."model.id"]
-categories = ["qwen2.5-0.5b-instruct-q4"]
-
-[profiles.contrast_sampling]
-# C7 §5 temp>0 contrast — the leg DEFERRED until v0.2 M1 seeded-sampling landed
-# (inference_determinism_scoping_memo.md §6; built 2026-07-03 as manifest v0.5).
-# The UNCHANGED model + probe panel + seed; ONLY the generation policy differs
-# from the greedy reference: seeded sampling (temperature 0.8, top_p 0.9, seed 0
-# pinned — the broker injects the declared policy per-request; the executor
-# passes no temperature, so it needs no change and stays the certified code).
-# Collection mode is PROCESS-ONLY (replication = 1): sampled replicas
-# legitimately differ, so the coordinator accepts sampling with the inherited
-# tolerance reducer only at an effective target of 1, where the agreement
-# machinery is dormant — the §3c coherence gate; vigiles-lab's T2 floor permits
-# repl-1. The analysis is OFFLINE, mirroring the Phase-0/§5 method: per-probe
-# feature deltas vs the gemma temp0 reference (drift/calibration data). Honest
-# expectation: the open-ended probe (p-greeting) exits the envelope; the
-# constrained probes (arithmetic, enumeration) may legitimately match at low
-# entropy (top-token dominance) — record per-probe, don't force a blanket claim.
-# ⚠ REQUIRES the worker fleet at >= v0.2.56: the manifest derives the
-# generation_policy feature requirement, so pre-M1 workers are excluded (units
-# wait rather than burn — safe but stalled on an unrolled fleet).
-description = "C7 §5 temp>0 contrast: unchanged model/panel/seed under declared seeded sampling (temp 0.8, top_p 0.9, seed 0) at repl-1 process-only; offline per-probe deltas vs the greedy reference must exceed the envelope where entropy permits."
-
-[profiles.contrast_sampling.experiment]
-label = "vigiles-c7-contrast-sampling"
-replication = 1                        # process-only: each replica an independent sample (§3c); T2 tier floor permits repl-1
-duration_hours = 1
-research_goal = "C7 §5 temp>0 contrast (deferred leg, now runnable under manifest v0.5 seeded sampling). Run the UNCHANGED fixed 12-probe Vigiles panel against the UNCHANGED gemma-3-1b-it-q4 with the SAME pinned seed, changing ONLY the declared generation policy: temperature 0.8 with top_p 0.9 (manifest-declared; the worker broker injects the policy per-request — the §47 seeded-sampling rung). Analysis is offline and mirrors the Phase-0 cross-band method: compare per-probe light features (type_token_ratio, top_tokens, counts, response_sha256) to the gemma temp0 reference from the drift/calibration studies, per probe. Expected: the open-ended greeting probe exits the tightened envelope (TTR rel 0.02, top_tokens jaccard 0.9); constrained probes may legitimately match at low entropy. Fixed tiny volume (3 rounds x 12 probes = 36 units at repl-1), minutes. Also the first production proof of the v0.5 generation-policy chain end-to-end (declare -> submit gate -> feature-routed dispatch -> per-request broker enforcement -> generation footprint)."
-prompt_characteristics = "The unchanged fixed Vigiles probe panel at the SAME pinned seed (0) — identical inputs to the drift study; only the declared generation policy differs (seeded sampling temp 0.8 / top_p 0.9 in place of greedy temp 0)."
-
-# The declared generation policy (manifest v0.5, inference_determinism):
-# temperature > 0 REQUIRES the pinned seed; top_p is the one whitelist knob we
-# exercise (proves the full v0.5 chain). Seed 0 = the greedy reference's seed
-# (the broker default the drift study ran under), so the ONLY changed variable
-# is the generation policy itself.
-[profiles.contrast_sampling.determinism]
-temperature = 0.8
-top_p = 0.9
-seed = 0
-
-[profiles.contrast_sampling.driver]
-run_seconds = 0                        # NOT duration mode
-round_interval_seconds = 0             # back-to-back
-max_rounds = 3                         # tiny fixed volume: 3 rounds x 12 probes = 36 units x repl-1 = 36 executions (minutes)
-stable_rounds = 1000                   # unreachable — fixed-volume, stops at max_rounds
-baseline_rounds = 0                    # temp>0 rejection contrast, not a self-baseline drift study; a 5-round baseline can't fit a 3-round run anyway (would clamp to 3 = all-baseline, no monitoring)
-unit_prefix = "cts"
-
-# ── Weekend endurance campaign (2026-07-04/06): 3 models × 48h, benchmarked ──
-# Three CONCURRENT experiments (one per model — model identity is schema-
-# enforced per manifest; generation policy is per-EXPERIMENT, broker-enforced
-# on every worker). All inherit [benchmark] reference → auto-scored at
-# completion. Greedy gemma keeps tolerance consensus (proven in-envelope);
-# qwen + the new model run observe-only (qwen cross-version byte-diverges on
-# the mayhems; smollm2 is unproven) — every replica receipted + exportable.
+# ── Weekend endurance campaign (2026-07-04/06): 2 models × 48h, self-baseline ──
+# Two CONCURRENT experiments (one per model — model identity is schema-enforced
+# per manifest; generation policy is per-EXPERIMENT, broker-enforced on every
+# worker). Both self-baseline (inherit [benchmark] reference = "self") → each
+# auto-scores against its OWN first-K rounds at completion. Greedy gemma keeps
+# tolerance consensus (proven in-envelope); smollm2 runs observe-only (unproven
+# cross-version byte-agreement) — every replica receipted + exportable.
+# (The qwen cross-model rung was retired with the Gemma anchor, 2026-07-14.)
 
 [profiles.weekend_gemma]
 description = "48h gemma drift monitor: greedy, tolerance consensus, half-hourly rounds."
@@ -393,7 +304,7 @@ description = "48h gemma drift monitor: greedy, tolerance consensus, half-hourly
 label = "vigiles-weekend-gemma"
 duration_hours = 48
 replication = 2
-research_goal = "48-hour endurance drift monitoring of the calibrated gemma-3-1b-it-q4 configuration: the unchanged probe panel at temperature 0, half-hourly rounds, scored continuously against the C7 calibration baseline. Validates long-horizon stability of the model, fleet, and benchmark pipeline."
+research_goal = "48-hour endurance drift monitoring of the calibrated gemma-3-1b-it-q4 configuration: the unchanged probe panel at temperature 0, half-hourly rounds, scored continuously against its own self-baseline. Validates long-horizon stability of the model, fleet, and benchmark pipeline."
 prompt_characteristics = "The unchanged fixed Vigiles probe panel at temperature 0 — identical inputs to the drift study, sustained for 48 hours."
 [profiles.weekend_gemma.driver]
 run_seconds = 172800
@@ -401,32 +312,6 @@ round_interval_seconds = 1800
 max_rounds = 100000
 stable_rounds = 100000
 unit_prefix = "wg"
-
-[profiles.weekend_qwen]
-description = "48h qwen endurance: greedy, observe-only, half-hourly rounds."
-[profiles.weekend_qwen.reducer]
-kind = "builtin_process_only"
-[profiles.weekend_qwen.experiment]
-label = "vigiles-weekend-qwen"
-model_id = "qwen2.5-0.5b-instruct-q4"
-model_version = "1.0"
-hf_repo = "bartowski/Qwen2.5-0.5B-Instruct-GGUF"
-hf_filename = "Qwen2.5-0.5B-Instruct-Q4_K_M.gguf"
-duration_hours = 48
-replication = 2
-research_goal = "48-hour endurance run of Qwen2.5-0.5B-Instruct on the unchanged probe panel at temperature 0, observe-only collection, benchmarked against the gemma calibration baseline — the persistent cross-model rung, measured continuously."
-prompt_characteristics = "The unchanged fixed Vigiles probe panel at temperature 0; only the served model differs from the drift study."
-[profiles.weekend_qwen.feature_schema."model.id"]
-categories = ["qwen2.5-0.5b-instruct-q4"]
-[profiles.weekend_qwen.driver]
-run_seconds = 172800
-round_interval_seconds = 1800
-max_rounds = 100000
-stable_rounds = 100000
-# wq2: the original wq driver + a no-profile fast-cadence resume desynced the
-# journal from the server's unit-id sequence (unit_id_already_submitted on
-# resume). Fresh prefix = collision-free restart; prior observations stay valid.
-unit_prefix = "wq2"
 
 [profiles.weekend_smollm]
 description = "48h SmolLM2 endurance: seeded sampling (temp 0.8), observe-only — the temp>0 leg + fleet-wide lazy auto-acquire of a never-downloaded model."
@@ -444,7 +329,7 @@ hf_repo = "bartowski/SmolLM2-1.7B-Instruct-GGUF"
 hf_filename = "SmolLM2-1.7B-Instruct-Q4_K_M.gguf"
 duration_hours = 48
 replication = 2
-research_goal = "48-hour endurance run of SmolLM2-1.7B-Instruct under SEEDED SAMPLING (temperature 0.8, top_p 0.9, pinned seed), observe-only collection, on the unchanged probe panel — exercises the v0.5 generation-policy chain, fleet-wide lazy auto-acquire of a never-served model, and sustained sampling-mode benchmarking against the calibration baseline."
+research_goal = "48-hour endurance run of SmolLM2-1.7B-Instruct under SEEDED SAMPLING (temperature 0.8, top_p 0.9, pinned seed), observe-only collection, on the unchanged probe panel — exercises the v0.5 generation-policy chain, fleet-wide lazy auto-acquire of a never-served model, and sustained sampling-mode self-baseline drift monitoring."
 prompt_characteristics = "The unchanged fixed Vigiles probe panel under seeded sampling (temperature 0.8) — a new model and non-deterministic generation; only lexical summary features are analyzed."
 [profiles.weekend_smollm.feature_schema."model.id"]
 categories = ["smollm2-1.7b-instruct-q4"]
@@ -455,12 +340,12 @@ max_rounds = 100000
 stable_rounds = 100000
 unit_prefix = "ws"
 
-# ── OVERNIGHT campaign (2026-07-06): the weekend 3-model panel at a 12h clock ──
-# Three concurrent single-model experiments across the fleet — gemma + qwen
-# greedy (deterministic), smollm seeded-sampling (temp 0.8, process_only) — each
-# 12h at half-hourly rounds (~24 rounds), repl-2, scored against the same C7
-# calibration baseline the weekend runs used (inherited [benchmark] reference).
-# Fresh unit prefixes (og/oq/os) so nothing collides with the weekend journals.
+# ── OVERNIGHT campaign (2026-07-06): the weekend 2-model panel at a 12h clock ──
+# Two concurrent single-model experiments across the fleet — gemma greedy
+# (deterministic), smollm seeded-sampling (temp 0.8, process_only) — each 12h at
+# half-hourly rounds (~24 rounds), repl-2, self-baselined (inherited [benchmark]
+# reference = "self"). Fresh unit prefixes (og/os) so nothing collides with the
+# weekend journals. (The qwen leg was retired with the Gemma anchor, 2026-07-14.)
 
 [profiles.overnight_gemma]
 description = "12h gemma drift monitor: greedy, tolerance consensus, half-hourly rounds."
@@ -468,7 +353,7 @@ description = "12h gemma drift monitor: greedy, tolerance consensus, half-hourly
 label = "vigiles-overnight-gemma"
 duration_hours = 12
 replication = 2
-research_goal = "Overnight (12h) endurance drift monitoring of the calibrated gemma-3-1b-it-q4 configuration: the unchanged probe panel at temperature 0, half-hourly rounds, scored continuously against the C7 calibration baseline. Shorter re-run of the weekend endurance leg."
+research_goal = "Overnight (12h) endurance drift monitoring of the calibrated gemma-3-1b-it-q4 configuration: the unchanged probe panel at temperature 0, half-hourly rounds, scored continuously against its own self-baseline. Shorter re-run of the weekend endurance leg."
 prompt_characteristics = "The unchanged fixed Vigiles probe panel at temperature 0 — identical inputs to the drift study, sustained overnight (~12 hours)."
 [profiles.overnight_gemma.driver]
 run_seconds = 43200
@@ -476,29 +361,6 @@ round_interval_seconds = 1800
 max_rounds = 100000
 stable_rounds = 100000
 unit_prefix = "og"
-
-[profiles.overnight_qwen]
-description = "12h qwen endurance: greedy, observe-only, half-hourly rounds."
-[profiles.overnight_qwen.reducer]
-kind = "builtin_process_only"
-[profiles.overnight_qwen.experiment]
-label = "vigiles-overnight-qwen"
-model_id = "qwen2.5-0.5b-instruct-q4"
-model_version = "1.0"
-hf_repo = "bartowski/Qwen2.5-0.5B-Instruct-GGUF"
-hf_filename = "Qwen2.5-0.5B-Instruct-Q4_K_M.gguf"
-duration_hours = 12
-replication = 2
-research_goal = "Overnight (12h) endurance run of Qwen2.5-0.5B-Instruct on the unchanged probe panel at temperature 0, observe-only collection, benchmarked against the gemma calibration baseline — the persistent cross-model rung, measured overnight."
-prompt_characteristics = "The unchanged fixed Vigiles probe panel at temperature 0; only the served model differs from the drift study."
-[profiles.overnight_qwen.feature_schema."model.id"]
-categories = ["qwen2.5-0.5b-instruct-q4"]
-[profiles.overnight_qwen.driver]
-run_seconds = 43200
-round_interval_seconds = 1800
-max_rounds = 100000
-stable_rounds = 100000
-unit_prefix = "oq"
 
 [profiles.overnight_smollm]
 description = "12h SmolLM2 endurance: seeded sampling (temp 0.8), observe-only — the temp>0 leg."
@@ -516,7 +378,7 @@ hf_repo = "bartowski/SmolLM2-1.7B-Instruct-GGUF"
 hf_filename = "SmolLM2-1.7B-Instruct-Q4_K_M.gguf"
 duration_hours = 12
 replication = 2
-research_goal = "Overnight (12h) endurance run of SmolLM2-1.7B-Instruct under SEEDED SAMPLING (temperature 0.8, top_p 0.9, pinned seed), observe-only collection, on the unchanged probe panel — the temp>0 leg, exercising the v0.5 generation-policy chain and sustained sampling-mode benchmarking against the calibration baseline."
+research_goal = "Overnight (12h) endurance run of SmolLM2-1.7B-Instruct under SEEDED SAMPLING (temperature 0.8, top_p 0.9, pinned seed), observe-only collection, on the unchanged probe panel — the temp>0 leg, exercising the v0.5 generation-policy chain and sustained sampling-mode self-baseline drift monitoring."
 prompt_characteristics = "The unchanged fixed Vigiles probe panel under seeded sampling (temperature 0.8) — non-deterministic generation; only lexical summary features are analyzed."
 [profiles.overnight_smollm.feature_schema."model.id"]
 categories = ["smollm2-1.7b-instruct-q4"]
@@ -527,18 +389,18 @@ max_rounds = 100000
 stable_rounds = 100000
 unit_prefix = "os"
 
-# ── 10h SAMPLING panel (2026-07-08): mistral-7b-v0.3 / llama-3-8b / qwen2.5-0.5b ──
-# Three single-model experiments under seeded sampling (temp 0.8, top_p 0.9,
+# ── 10h SAMPLING panel (2026-07-08): mistral-7b-v0.3 / llama-3-8b ──
+# Two single-model experiments under seeded sampling (temp 0.8, top_p 0.9,
 # process_only), each a 10h duration run with NO inter-round pause (back-to-back —
 # the "minimum pauses" ask; rounds are naturally spaced by inference time). Fleet-fit
 # (footprint x 1.2 serve overhead vs the 5.44 GB Jetson budget): mistral (5.25->6.3)
 # and llama-3-8b (5.91->7.09) both exceed it -> Mac-only, so both run repl-1 on the Mac
 # (repl-2 on a single-capable-worker fleet strands units at 1-of-2 — the floor-settle
 # sweep is not on a recurring timer, so they freeze rather than settling at floor).
-# qwen2.5-0.5b (~0.4->0.5) fits the Jetsons -> repl-2 across the mayhem pair, so the
-# small-model leg is where the mayhems contribute (2026-07-09 resize: the 14B qwen3
-# was Jetson-incapable at load — "unable to allocate CUDA0 buffer"). Fresh prefixes
-# (o10m/o10l/o10q25). Scored against the inherited C7 calibration baseline.
+# Self-baselined (inherited [benchmark] reference = "self"); fresh prefixes
+# (o10m/o10l). NOTE: the qwen2.5-0.5b Jetson leg was retired with the Gemma anchor
+# (2026-07-14), so this SAMPLING panel is Mac-only — the mayhems idle here; the
+# smollm2 leg of the DETERMINISTIC panel below is what keeps them busy.
 
 [profiles.overnight10_mistral]
 description = "10h Mistral-7B-v0.3 sampling drift: temp 0.8, process_only, back-to-back rounds, repl-1 (Mac-only under the serve-overhead gate)."
@@ -556,7 +418,7 @@ hf_repo = "MaziyarPanahi/Mistral-7B-Instruct-v0.3-GGUF"
 hf_filename = "Mistral-7B-Instruct-v0.3.Q4_K_M.gguf"
 duration_hours = 10
 replication = 1
-research_goal = "10-hour seeded-sampling (temperature 0.8, top_p 0.9, pinned seed) run of Mistral-7B-Instruct-v0.3 on the unchanged Vigiles probe panel, process_only collection, back-to-back rounds, replication 1 on the Mac (its 6.3 GB serve footprint fits only the 24 GB Mac under the load-overhead gate) — a single-worker sampling trajectory benchmarked against the C7 calibration baseline."
+research_goal = "10-hour seeded-sampling (temperature 0.8, top_p 0.9, pinned seed) run of Mistral-7B-Instruct-v0.3 on the unchanged Vigiles probe panel, process_only collection, back-to-back rounds, replication 1 on the Mac (its 6.3 GB serve footprint fits only the 24 GB Mac under the load-overhead gate) — a single-worker sampling trajectory benchmarked against its own self-baseline (its first K rounds)."
 prompt_characteristics = "The unchanged fixed Vigiles probe panel under seeded sampling (temperature 0.8) — non-deterministic generation; only lexical summary features are analyzed."
 [profiles.overnight10_mistral.feature_schema."model.id"]
 categories = ["mistral-7b-instruct-v0.3-q4"]
@@ -593,7 +455,7 @@ hf_repo = "MaziyarPanahi/Meta-Llama-3-8B-Instruct-GGUF"
 hf_filename = "Meta-Llama-3-8B-Instruct.Q4_K_M.gguf"
 duration_hours = 10
 replication = 1
-research_goal = "10-hour seeded-sampling (temperature 0.8, top_p 0.9, pinned seed) run of Meta-Llama-3-8B-Instruct on the unchanged Vigiles probe panel, process_only collection, back-to-back rounds, replication 1 on the Mac (its 5.90 GB load footprint exceeds the 5.44 GB Jetson serve budget) — sampling-mode drift monitoring benchmarked against the C7 calibration baseline."
+research_goal = "10-hour seeded-sampling (temperature 0.8, top_p 0.9, pinned seed) run of Meta-Llama-3-8B-Instruct on the unchanged Vigiles probe panel, process_only collection, back-to-back rounds, replication 1 on the Mac (its 5.90 GB load footprint exceeds the 5.44 GB Jetson serve budget) — sampling-mode drift monitoring benchmarked against its own self-baseline (its first K rounds)."
 prompt_characteristics = "The unchanged fixed Vigiles probe panel under seeded sampling (temperature 0.8) — non-deterministic generation; only lexical summary features are analyzed."
 [profiles.overnight10_llama.feature_schema."model.id"]
 categories = ["meta-llama-3-8b-instruct-q4"]
@@ -614,49 +476,13 @@ max_rounds = 100000
 stable_rounds = 100000
 unit_prefix = "o10l"
 
-[profiles.overnight10_qwen25]
-description = "10h Qwen2.5-0.5B sampling drift: temp 0.8, process_only, back-to-back, repl-2 (mayhem-pair; ~0.4 GB fits the 7 GB Jetsons)."
-[profiles.overnight10_qwen25.reducer]
-kind = "builtin_process_only"
-[profiles.overnight10_qwen25.determinism]
-temperature = 0.8
-top_p = 0.9
-seed = 0
-[profiles.overnight10_qwen25.experiment]
-label = "vigiles-overnight10-qwen25"
-model_id = "qwen2.5-0.5b-instruct-q4"
-model_version = "1.0"
-hf_repo = "bartowski/Qwen2.5-0.5B-Instruct-GGUF"
-hf_filename = "Qwen2.5-0.5B-Instruct-Q4_K_M.gguf"
-duration_hours = 10
-replication = 2
-research_goal = "10-hour seeded-sampling (temperature 0.8, top_p 0.9, pinned seed) run of Qwen2.5-0.5B-Instruct on the unchanged Vigiles probe panel, process_only collection, back-to-back rounds, replication 2 across the mayhem pair (its ~0.4 GB load footprint fits the 7 GB Jetsons) — the small-model cross-worker sampling leg, benchmarked against the C7 calibration baseline."
-prompt_characteristics = "The unchanged fixed Vigiles probe panel under seeded sampling (temperature 0.8) — non-deterministic generation; only lexical summary features are analyzed."
-[profiles.overnight10_qwen25.feature_schema."model.id"]
-categories = ["qwen2.5-0.5b-instruct-q4"]
-[profiles.overnight10_qwen25.pre_registration]
-hypothesis = "under seeded sampling (temperature 0.8, top_p 0.9, pinned seed 0), each fixed Vigiles probe's output is reproducible within a worker across the 10-hour horizon (the seed pins the sampler); a post-stability exit of a probe's lexical feature signature from its C7-calibrated comparison envelope is a drift event attributable to the serving stack, the pinned weights held constant. Null = within-envelope stability throughout."
-analysis_method = "per probe_id, track the lexical feature vector (type_token_ratio, top_tokens) across the back-to-back rounds on each of the two serving workers (mayhem pair); a sustained post-stability exit from the declared comparison envelope is the drift signal. Replication 2 (the ~0.4 GB load footprint fits the Jetsons), so this is a cross-worker sampling trajectory of the smallest model in the panel."
-features = ["lexical.type_token_ratio", "lexical.top_tokens", "response_sha256"]
-timescale = "long_horizon"
-decision_rule = "drift IFF a probe's lexical feature vector exits the declared comparison envelope after initial stability, sustained across consecutive rounds"
-expected_result = "descriptive: characterize Qwen2.5-0.5B's seeded-sampling lexical stability over 10h; null = at least one probe exits its envelope post-stability (a serving-stack drift event)"
-stopping_rule = "fixed 10h duration (run_seconds=36000), declared up front - not data-peeking-dependent"
-comparison_keys = ["probe_id"]
-min_replication = 2
-[profiles.overnight10_qwen25.driver]
-run_seconds = 36000
-round_interval_seconds = 0
-max_rounds = 100000
-stable_rounds = 100000
-unit_prefix = "o10q25"
-
 # ── 10h DETERMINISTIC panel (greedy, temp 0): mistral-7b-v0.3 / llama-3-8b / smollm2-1.7b ──
-# The overnight10 three-model panel re-run GREEDY — the deterministic counterpart to the
+# The overnight10 model panel re-run GREEDY — the deterministic counterpart to the
 # seeded-sampling legs above. Same models / panel / 10h volume / process_only collection;
 # ONLY the generation policy differs — temperature 0.0 in place of 0.8 (top_p/seed left in
-# place but inert at greedy). smollm2-1.7b takes the small-model repl-2 mayhem slot (qwen25
-# in the sampling panel); mistral + llama stay repl-1 Mac-only under the serve-overhead gate.
+# place but inert at greedy). smollm2-1.7b takes the small-model repl-2 mayhem slot (it is
+# the small model in THIS panel; the sampling panel is Mac-only since qwen25 was retired);
+# mistral + llama stay repl-1 Mac-only under the serve-overhead gate.
 # Fresh prefixes (o10dm/o10dl/o10ds) + labels so nothing collides with the sampling journals.
 # The [determinism] block is kept (temp 0.0), so the manifest still declares a generation
 # policy → v0.2.56+ workers required (the fleet is 0.2.71 — excludes no one).
@@ -675,7 +501,7 @@ hf_repo = "MaziyarPanahi/Mistral-7B-Instruct-v0.3-GGUF"
 hf_filename = "Mistral-7B-Instruct-v0.3.Q4_K_M.gguf"
 duration_hours = 10
 replication = 1
-research_goal = "10-hour DETERMINISTIC (greedy, temperature 0) run of Mistral-7B-Instruct-v0.3 on the unchanged Vigiles probe panel, process_only collection, back-to-back rounds, replication 1 on the Mac (its 6.3 GB serve footprint fits only the 24 GB Mac under the load-overhead gate) — the greedy counterpart to the seeded-sampling overnight10 leg, benchmarked against the C7 calibration baseline."
+research_goal = "10-hour DETERMINISTIC (greedy, temperature 0) run of Mistral-7B-Instruct-v0.3 on the unchanged Vigiles probe panel, process_only collection, back-to-back rounds, replication 1 on the Mac (its 6.3 GB serve footprint fits only the 24 GB Mac under the load-overhead gate) — the greedy counterpart to the seeded-sampling overnight10 leg, benchmarked against its own self-baseline (its first K rounds)."
 prompt_characteristics = "The unchanged fixed Vigiles probe panel at temperature 0 (greedy, no sampler) — deterministic generation; only lexical summary features are analyzed."
 [profiles.overnight10det_mistral.feature_schema."model.id"]
 categories = ["mistral-7b-instruct-v0.3-q4"]
@@ -710,7 +536,7 @@ hf_repo = "MaziyarPanahi/Meta-Llama-3-8B-Instruct-GGUF"
 hf_filename = "Meta-Llama-3-8B-Instruct.Q4_K_M.gguf"
 duration_hours = 10
 replication = 1
-research_goal = "10-hour DETERMINISTIC (greedy, temperature 0) run of Meta-Llama-3-8B-Instruct on the unchanged Vigiles probe panel, process_only collection, back-to-back rounds, replication 1 on the Mac (its 5.90 GB load footprint exceeds the 5.44 GB Jetson serve budget) — the greedy counterpart to the seeded-sampling overnight10 leg, benchmarked against the C7 calibration baseline."
+research_goal = "10-hour DETERMINISTIC (greedy, temperature 0) run of Meta-Llama-3-8B-Instruct on the unchanged Vigiles probe panel, process_only collection, back-to-back rounds, replication 1 on the Mac (its 5.90 GB load footprint exceeds the 5.44 GB Jetson serve budget) — the greedy counterpart to the seeded-sampling overnight10 leg, benchmarked against its own self-baseline (its first K rounds)."
 prompt_characteristics = "The unchanged fixed Vigiles probe panel at temperature 0 (greedy, no sampler) — deterministic generation; only lexical summary features are analyzed."
 [profiles.overnight10det_llama.feature_schema."model.id"]
 categories = ["meta-llama-3-8b-instruct-q4"]
@@ -745,7 +571,7 @@ hf_repo = "bartowski/SmolLM2-1.7B-Instruct-GGUF"
 hf_filename = "SmolLM2-1.7B-Instruct-Q4_K_M.gguf"
 duration_hours = 10
 replication = 2
-research_goal = "10-hour DETERMINISTIC (greedy, temperature 0) run of SmolLM2-1.7B-Instruct on the unchanged Vigiles probe panel, process_only collection, back-to-back rounds, replication 2 across the mayhem pair (its ~1.1 GB load footprint fits the Jetsons) — the greedy small-model leg (in place of qwen25 in the sampling panel), benchmarked against the C7 calibration baseline."
+research_goal = "10-hour DETERMINISTIC (greedy, temperature 0) run of SmolLM2-1.7B-Instruct on the unchanged Vigiles probe panel, process_only collection, back-to-back rounds, replication 2 across the mayhem pair (its ~1.1 GB load footprint fits the Jetsons) — the greedy small-model leg on the mayhem pair, benchmarked against its own self-baseline (its first K rounds)."
 prompt_characteristics = "The unchanged fixed Vigiles probe panel at temperature 0 (greedy, no sampler) — deterministic generation; only lexical summary features are analyzed."
 [profiles.overnight10det_smollm.feature_schema."model.id"]
 categories = ["smollm2-1.7b-instruct-q4"]
@@ -801,12 +627,12 @@ hf_repo = "ggml-org/gpt-oss-20b-GGUF"
 hf_filename = "gpt-oss-20b-mxfp4.gguf"
 duration_hours = 10
 replication = 1
-research_goal = "10-hour seeded-sampling (temperature 0.8, top_p 0.9, pinned seed 0) run of OpenAI gpt-oss-20b (native MXFP4, single-file GGUF) on the unchanged Vigiles probe panel, process_only collection, back-to-back rounds, replication 1 on the Mac (its ~12.1 GB / ~14.5 GB-with-serve-overhead footprint fits only the 22 GB Mac worker) — the sampling half of the gpt-oss det-vs-sampling contrast, benchmarked against the C7 calibration baseline."
+research_goal = "10-hour seeded-sampling (temperature 0.8, top_p 0.9, pinned seed 0) run of OpenAI gpt-oss-20b (native MXFP4, single-file GGUF) on the unchanged Vigiles probe panel, process_only collection, back-to-back rounds, replication 1 on the Mac (its ~12.1 GB / ~14.5 GB-with-serve-overhead footprint fits only the 22 GB Mac worker) — the sampling half of the gpt-oss det-vs-sampling contrast, benchmarked against its own self-baseline (its first K rounds)."
 prompt_characteristics = "The unchanged fixed Vigiles probe panel under seeded sampling (temperature 0.8) against a 20B reasoning model — non-deterministic, chain-of-thought-bearing generation; only lexical summary features are analyzed (no raw text retained)."
 [profiles.overnight10_gptoss.feature_schema."model.id"]
 categories = ["gpt-oss-20b-mxfp4"]
 [profiles.overnight10_gptoss.pre_registration]
-hypothesis = "under seeded sampling (temperature 0.8, top_p 0.9, pinned seed 0), each fixed Vigiles probe's output is reproducible within a worker across the 10-hour horizon (the seed pins the sampler); a post-stability exit of a probe's lexical feature signature from its comparison envelope is a drift event attributable to the serving stack, the pinned weights held constant. Null = within-envelope stability throughout. NB: as a cross-model contrast vs the gemma C7 baseline, the envelope is expected to be exceeded on absolute footing; the drift signal is the WITHIN-RUN trajectory."
+hypothesis = "under seeded sampling (temperature 0.8, top_p 0.9, pinned seed 0), each fixed Vigiles probe's output is reproducible within a worker across the 10-hour horizon (the seed pins the sampler); a post-stability exit of a probe's lexical feature signature from its comparison envelope is a drift event attributable to the serving stack, the pinned weights held constant. Null = within-envelope stability throughout. NB: under self-baseline the reference is this run's OWN first-K rounds, so the drift signal is the model's WITHIN-RUN trajectory from its own normal — not distance to another model."
 analysis_method = "per probe_id, track the lexical feature vector (type_token_ratio, top_tokens) across the back-to-back rounds on the single serving worker (Mac); a sustained post-stability exit from the declared comparison envelope is the drift signal. Replication 1 (Mac-only: the 12.11 GB MXFP4 footprint exceeds the 5.44 GB Jetson serve budget), so this is a single-worker sampling trajectory; corroboration is process_only because seeded sampling is not byte-reproducible across Ollama versions (C15)."
 features = ["lexical.type_token_ratio", "lexical.top_tokens", "response_sha256"]
 timescale = "long_horizon"
@@ -836,12 +662,12 @@ hf_repo = "ggml-org/gpt-oss-20b-GGUF"
 hf_filename = "gpt-oss-20b-mxfp4.gguf"
 duration_hours = 10
 replication = 1
-research_goal = "10-hour DETERMINISTIC (greedy, temperature 0) run of OpenAI gpt-oss-20b (native MXFP4, single-file GGUF) on the unchanged Vigiles probe panel, process_only collection, back-to-back rounds, replication 1 on the Mac (its ~12.1 GB / ~14.5 GB-with-serve-overhead footprint fits only the 22 GB Mac worker) — the greedy half of the gpt-oss det-vs-sampling contrast, benchmarked against the C7 calibration baseline."
+research_goal = "10-hour DETERMINISTIC (greedy, temperature 0) run of OpenAI gpt-oss-20b (native MXFP4, single-file GGUF) on the unchanged Vigiles probe panel, process_only collection, back-to-back rounds, replication 1 on the Mac (its ~12.1 GB / ~14.5 GB-with-serve-overhead footprint fits only the 22 GB Mac worker) — the greedy half of the gpt-oss det-vs-sampling contrast, benchmarked against its own self-baseline (its first K rounds)."
 prompt_characteristics = "The unchanged fixed Vigiles probe panel at temperature 0 (greedy, no sampler) against a 20B reasoning model — deterministic, chain-of-thought-bearing generation; only lexical summary features are analyzed (no raw text retained)."
 [profiles.overnight10det_gptoss.feature_schema."model.id"]
 categories = ["gpt-oss-20b-mxfp4"]
 [profiles.overnight10det_gptoss.pre_registration]
-hypothesis = "at temperature 0 (greedy decoding), each fixed Vigiles probe's output is byte-reproducible within a worker across the 10-hour horizon (the weights and greedy policy are pinned); a post-stability exit of a probe's lexical feature signature from its comparison envelope is a drift event attributable to the serving stack, the pinned weights held constant. Null = within-envelope stability throughout. NB: as a cross-model contrast vs the gemma C7 baseline, the envelope is expected to be exceeded on absolute footing; the drift signal is the WITHIN-RUN trajectory."
+hypothesis = "at temperature 0 (greedy decoding), each fixed Vigiles probe's output is byte-reproducible within a worker across the 10-hour horizon (the weights and greedy policy are pinned); a post-stability exit of a probe's lexical feature signature from its comparison envelope is a drift event attributable to the serving stack, the pinned weights held constant. Null = within-envelope stability throughout. NB: under self-baseline the reference is this run's OWN first-K rounds, so the drift signal is the model's WITHIN-RUN trajectory from its own normal — not distance to another model."
 analysis_method = "per probe_id, track the lexical feature vector (type_token_ratio, top_tokens) across the back-to-back rounds on the single serving worker (Mac); a sustained post-stability exit from the declared comparison envelope is the drift signal. Replication 1 (Mac-only: the 12.11 GB MXFP4 footprint exceeds the 5.44 GB Jetson serve budget), so this is a single-worker greedy trajectory; collection is process_only (each replica an independent receipted observation)."
 features = ["lexical.type_token_ratio", "lexical.top_tokens", "response_sha256"]
 timescale = "long_horizon"
