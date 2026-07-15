@@ -19,7 +19,7 @@ Two findings shaped the current design. The keystone run (`exp-_LtpfHNh`, 2026-0
 
 ### Running D6
 
-Knobs live in [`experiment.toml`](experiment.toml): `[experiment]`/`[executor]`/`[reducer]` feed the build, `[driver]` feeds the run. Requires `auspexai-tenant>=0.6.51` (the documented `--detach` concurrent flow). The legacy `VIGILES_*` env vars still override the *driver* knobs (see [Long-horizon runs](#long-horizon-runs)).
+Knobs live in [`experiment.toml`](experiment.toml): `[experiment]`/`[executor]`/`[reducer]` feed the build, `[driver]` feeds the run. Requires `auspexai-tenant>=0.6.51` (the documented `--detach` concurrent flow); the `capture_*` profiles (D20 raw-content capture) require `>=0.6.58`, which harvests the buffered raw live during the run. The legacy `VIGILES_*` env vars still override the *driver* knobs (see [Long-horizon runs](#long-horizon-runs)).
 
 The whole lifecycle is one command (build → submit → await approval → drive):
 
