@@ -185,6 +185,7 @@ dir = "~/.local/share/auspexai-tenant/runs"
 # reference = "" — which, being a scalar, cleanly overrides the inherited "self".
 [benchmark]
 reference = "self"                     # self_baseline mode (alias); the reference is this run's own first-K baseline rounds
+calibrate_envelope = false             # §3.2 (self-calibrated envelope, tenant-sdk >= 0.6.56): when true, 1 EU = THIS model's own baseline wobble (floored at the C7 envelope), the fuller Sentinel method. Default false → the fixed C7 envelope (§3.1); flip to true to compare once the first self-baseline runs validate the baseline dispersion.
 
 [profiles.starter]
 # The declawed on-ramp face: benign fixed probe panel, converge-on-stability,
@@ -398,9 +399,10 @@ unit_prefix = "os"
 # (repl-2 on a single-capable-worker fleet strands units at 1-of-2 — the floor-settle
 # sweep is not on a recurring timer, so they freeze rather than settling at floor).
 # Self-baselined (inherited [benchmark] reference = "self"); fresh prefixes
-# (o10m/o10l). NOTE: the qwen2.5-0.5b Jetson leg was retired with the Gemma anchor
-# (2026-07-14), so this SAMPLING panel is Mac-only — the mayhems idle here; the
-# smollm2 leg of the DETERMINISTIC panel below is what keeps them busy.
+# (o10m/o10l). Each model runs on whatever device it fits (coordinator RAM-fit
+# routing): mistral + llama are Mac-only. With qwen2.5-0.5b retired (2026-07-14)
+# this panel has no Jetson-sized model, so the mayhems simply aren't part of it —
+# normal fleet-fit, not an imbalance (a small model here would draw them in).
 
 [profiles.overnight10_mistral]
 description = "10h Mistral-7B-v0.3 sampling drift: temp 0.8, process_only, back-to-back rounds, repl-1 (Mac-only under the serve-overhead gate)."
