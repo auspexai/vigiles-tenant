@@ -685,7 +685,7 @@ max_rounds = 100000
 stable_rounds = 100000
 unit_prefix = "o10dgs"
 
-# ── CONTENT-CAPTURE batch (2026-07-15): gpt-oss-20b / Phi-3.5-mini / Qwen3-1.7B, 10h, det + sampling ──
+# ── CONTENT-CAPTURE batch (2026-07-15): gpt-oss-20b / Gemma-3-1B / Qwen3-1.7B, 10h, det + sampling ──
 # Six single-model experiments (3 models × {seeded-sampling temp 0.8, greedy temp 0}), each a 10h
 # duration run, process_only, back-to-back rounds, self-baselined (inherited [benchmark] reference =
 # "self", K=5). NEW here: [capture] raw = true (D20) — the executor emits raw_response, the coordinator
@@ -693,7 +693,7 @@ unit_prefix = "o10dgs"
 # collector harvests it live during the run. ⚠ CONSEQUENCES: (1) capture adds `raw_content_capture` to
 # sensitive_content_flags → the run does NOT auto-approve (routine_no_sensitive_flags fails) → per-
 # experiment REVIEW; permitted at R3. (2) collection is R3-gated + audited + one-time-read + evicts.
-# Fleet-fit: gpt-oss is Mac-only (repl-1); Phi-3.5-mini (2.39 GB) + Qwen3-1.7B (2.50 GB) fit the Jetsons
+# Fleet-fit: gpt-oss is Mac-only (repl-1); Gemma-3-1B (~2.42 GB serve) + Qwen3-1.7B (~3.25 GB serve) fit the Jetsons
 # (repl-2 mayhem pair). Fresh prefixes (cap{g,p,q}{s,d}). Requires tenant-sdk >= 0.6.60 — the release
 # that lets a `[capture] raw` manifest BUILD at all (0.6.58/0.6.59's Manifest validator rejected the
 # capture member + raw_content_capture flag → every capture build failed). 0.6.60 also carries the live
@@ -742,44 +742,44 @@ max_rounds = 100000
 stable_rounds = 100000
 unit_prefix = "capgs"
 
-[profiles.capture_phi]
-description = "10h microsoft Phi-3.5-mini-instruct (3.8B) seeded-sampling drift WITH raw-content capture (D20): process_only, back-to-back, repl-2 (mayhem pair); self-baselined; forces per-experiment review (R3)."
-[profiles.capture_phi.reducer]
+[profiles.capture_gemma]
+description = "10h Google Gemma-3-1B-it (1B) seeded-sampling drift WITH raw-content capture (D20): process_only, back-to-back, repl-2 (mayhem pair); self-baselined; forces per-experiment review (R3)."
+[profiles.capture_gemma.reducer]
 kind = "builtin_process_only"
-[profiles.capture_phi.determinism]
+[profiles.capture_gemma.determinism]
 temperature = 0.8
 top_p = 0.9
 seed = 0
-[profiles.capture_phi.capture]
+[profiles.capture_gemma.capture]
 raw = true                             # D20 raw-content capture (R3): executor emits raw_response → coordinator R3 transit buffer → SDK collector harvests live. Adds raw_content_capture to sensitive_flags → NOT auto-approved (review).
-[profiles.capture_phi.experiment]
-label = "vigiles-capture-phi"
-model_id = "phi-3.5-mini-instruct-q4"
+[profiles.capture_gemma.experiment]
+label = "vigiles-capture-gemma"
+model_id = "gemma-3-1b-it-q4"
 model_version = "1.0"
-hf_repo = "bartowski/Phi-3.5-mini-instruct-GGUF"
-hf_filename = "Phi-3.5-mini-instruct-Q4_K_M.gguf"
+hf_repo = "unsloth/gemma-3-1b-it-GGUF"
+hf_filename = "gemma-3-1b-it-Q4_K_M.gguf"
 duration_hours = 10
 replication = 2
-research_goal = "10-hour SEEDED SAMPLING (temperature 0.8, top_p 0.9, pinned seed 0) run of microsoft Phi-3.5-mini-instruct (3.8B) on the unchanged 12-probe Vigiles panel, process_only collection, back-to-back rounds, replication 2 across the mayhem pair (its 2.39 GB Q4_K_M footprint fits the Jetsons) — self-baselined (drift from its own first-K rounds) WITH D20 raw-content capture for qualitative review. The raw model outputs are collected live from the R3 transit buffer during the run (never persisted on the coordinator)."
-prompt_characteristics = "The unchanged fixed 12-probe Vigiles panel under seeded sampling (temperature 0.8) against microsoft Phi-3.5-mini-instruct (3.8B) — with raw model output captured (D20, R3) for qualitative inspection alongside the lexical drift features."
-[profiles.capture_phi.feature_schema."model.id"]
-categories = ["phi-3.5-mini-instruct-q4"]
-[profiles.capture_phi.pre_registration]
+research_goal = "10-hour SEEDED SAMPLING (temperature 0.8, top_p 0.9, pinned seed 0) run of Google Gemma-3-1B-it (1B) on the unchanged 12-probe Vigiles panel, process_only collection, back-to-back rounds, replication 2 across the mayhem pair (its ~2.42 GB KV-aware serve footprint — 0.81 GB Q4_K_M weights plus a small GQA KV cache — fits the Jetsons with real headroom) — self-baselined (drift from its own first-K rounds) WITH D20 raw-content capture for qualitative review. The raw model outputs are collected live from the R3 transit buffer during the run (never persisted on the coordinator)."
+prompt_characteristics = "The unchanged fixed 12-probe Vigiles panel under seeded sampling (temperature 0.8) against Google Gemma-3-1B-it (1B) — with raw model output captured (D20, R3) for qualitative inspection alongside the lexical drift features."
+[profiles.capture_gemma.feature_schema."model.id"]
+categories = ["gemma-3-1b-it-q4"]
+[profiles.capture_gemma.pre_registration]
 hypothesis = "under seeded sampling (temperature 0.8, top_p 0.9, pinned seed 0), each fixed Vigiles probe's output is reproducible within a worker across the 10-hour horizon (the seed pins the sampler); a post-stability exit of a probe's lexical feature signature from its self-baseline is a drift event attributable to the serving stack, the pinned weights held constant. Null = within-envelope stability throughout. Raw outputs are captured (D20) for qualitative corroboration, never folded into the quantitative drift scalar."
 analysis_method = "per probe_id, track the lexical feature vector (type_token_ratio, top_tokens) across the back-to-back rounds; drift is measured against this run's OWN first-K baseline rounds (self-baseline), not an anchor model. Captured raw outputs are inspected qualitatively (R3), separately from the scalar."
 features = ["lexical.type_token_ratio", "lexical.top_tokens", "response_sha256"]
 timescale = "long_horizon"
 decision_rule = "drift IFF a probe's lexical feature vector exits its self-baseline envelope after initial stability, sustained across consecutive rounds"
-expected_result = "descriptive: characterize microsoft Phi-3.5-mini-instruct (3.8B)'s seeded-sampling lexical stability over 10h; null = at least one probe exits its self-baseline post-stability (a serving-stack drift event)"
+expected_result = "descriptive: characterize Google Gemma-3-1B-it (1B)'s seeded-sampling lexical stability over 10h; null = at least one probe exits its self-baseline post-stability (a serving-stack drift event)"
 stopping_rule = "fixed 10h duration (run_seconds=36000), declared up front - not data-peeking-dependent"
 comparison_keys = ["probe_id"]
 min_replication = 2
-[profiles.capture_phi.driver]
+[profiles.capture_gemma.driver]
 run_seconds = 36000
 round_interval_seconds = 0
 max_rounds = 100000
 stable_rounds = 100000
-unit_prefix = "capps"
+unit_prefix = "capgms"
 
 [profiles.capture_qwen3]
 description = "10h Qwen3-1.7B seeded-sampling drift WITH raw-content capture (D20): process_only, back-to-back, repl-2 (mayhem pair); self-baselined; forces per-experiment review (R3)."
@@ -857,42 +857,42 @@ max_rounds = 100000
 stable_rounds = 100000
 unit_prefix = "capgd"
 
-[profiles.capturedet_phi]
-description = "10h microsoft Phi-3.5-mini-instruct (3.8B) greedy drift WITH raw-content capture (D20): process_only, back-to-back, repl-2 (mayhem pair); self-baselined; forces per-experiment review (R3)."
-[profiles.capturedet_phi.reducer]
+[profiles.capturedet_gemma]
+description = "10h Google Gemma-3-1B-it (1B) greedy drift WITH raw-content capture (D20): process_only, back-to-back, repl-2 (mayhem pair); self-baselined; forces per-experiment review (R3)."
+[profiles.capturedet_gemma.reducer]
 kind = "builtin_process_only"
-[profiles.capturedet_phi.determinism]
+[profiles.capturedet_gemma.determinism]
 temperature = 0.0                      # greedy (temp 0); NO sampling knobs — the SDK rejects top_p/seed at temp 0
-[profiles.capturedet_phi.capture]
+[profiles.capturedet_gemma.capture]
 raw = true                             # D20 raw-content capture (R3): executor emits raw_response → coordinator R3 transit buffer → SDK collector harvests live. Adds raw_content_capture to sensitive_flags → NOT auto-approved (review).
-[profiles.capturedet_phi.experiment]
-label = "vigiles-capturedet-phi"
-model_id = "phi-3.5-mini-instruct-q4"
+[profiles.capturedet_gemma.experiment]
+label = "vigiles-capturedet-gemma"
+model_id = "gemma-3-1b-it-q4"
 model_version = "1.0"
-hf_repo = "bartowski/Phi-3.5-mini-instruct-GGUF"
-hf_filename = "Phi-3.5-mini-instruct-Q4_K_M.gguf"
+hf_repo = "unsloth/gemma-3-1b-it-GGUF"
+hf_filename = "gemma-3-1b-it-Q4_K_M.gguf"
 duration_hours = 10
 replication = 2
-research_goal = "10-hour DETERMINISTIC (greedy, temperature 0) run of microsoft Phi-3.5-mini-instruct (3.8B) on the unchanged 12-probe Vigiles panel, process_only collection, back-to-back rounds, replication 2 across the mayhem pair (its 2.39 GB Q4_K_M footprint fits the Jetsons) — self-baselined (drift from its own first-K rounds) WITH D20 raw-content capture for qualitative review. The raw model outputs are collected live from the R3 transit buffer during the run (never persisted on the coordinator)."
-prompt_characteristics = "The unchanged fixed 12-probe Vigiles panel at temperature 0 (greedy, no sampler) against microsoft Phi-3.5-mini-instruct (3.8B) — with raw model output captured (D20, R3) for qualitative inspection alongside the lexical drift features."
-[profiles.capturedet_phi.feature_schema."model.id"]
-categories = ["phi-3.5-mini-instruct-q4"]
-[profiles.capturedet_phi.pre_registration]
+research_goal = "10-hour DETERMINISTIC (greedy, temperature 0) run of Google Gemma-3-1B-it (1B) on the unchanged 12-probe Vigiles panel, process_only collection, back-to-back rounds, replication 2 across the mayhem pair (its ~2.42 GB KV-aware serve footprint — 0.81 GB Q4_K_M weights plus a small GQA KV cache — fits the Jetsons with real headroom) — self-baselined (drift from its own first-K rounds) WITH D20 raw-content capture for qualitative review. The raw model outputs are collected live from the R3 transit buffer during the run (never persisted on the coordinator)."
+prompt_characteristics = "The unchanged fixed 12-probe Vigiles panel at temperature 0 (greedy, no sampler) against Google Gemma-3-1B-it (1B) — with raw model output captured (D20, R3) for qualitative inspection alongside the lexical drift features."
+[profiles.capturedet_gemma.feature_schema."model.id"]
+categories = ["gemma-3-1b-it-q4"]
+[profiles.capturedet_gemma.pre_registration]
 hypothesis = "at temperature 0 (greedy decoding), each fixed Vigiles probe's output is byte-reproducible within a worker across the 10-hour horizon (the weights and greedy policy are pinned); a post-stability exit of a probe's lexical feature signature from its self-baseline is a drift event attributable to the serving stack, the pinned weights held constant. Null = within-envelope stability throughout. Raw outputs are captured (D20) for qualitative corroboration, never folded into the quantitative drift scalar."
 analysis_method = "per probe_id, track the lexical feature vector (type_token_ratio, top_tokens) across the back-to-back rounds; drift is measured against this run's OWN first-K baseline rounds (self-baseline), not an anchor model. Captured raw outputs are inspected qualitatively (R3), separately from the scalar."
 features = ["lexical.type_token_ratio", "lexical.top_tokens", "response_sha256"]
 timescale = "long_horizon"
 decision_rule = "drift IFF a probe's lexical feature vector exits its self-baseline envelope after initial stability, sustained across consecutive rounds"
-expected_result = "descriptive: characterize microsoft Phi-3.5-mini-instruct (3.8B)'s greedy lexical stability over 10h; null = at least one probe exits its self-baseline post-stability (a serving-stack drift event)"
+expected_result = "descriptive: characterize Google Gemma-3-1B-it (1B)'s greedy lexical stability over 10h; null = at least one probe exits its self-baseline post-stability (a serving-stack drift event)"
 stopping_rule = "fixed 10h duration (run_seconds=36000), declared up front - not data-peeking-dependent"
 comparison_keys = ["probe_id"]
 min_replication = 2
-[profiles.capturedet_phi.driver]
+[profiles.capturedet_gemma.driver]
 run_seconds = 36000
 round_interval_seconds = 0
 max_rounds = 100000
 stable_rounds = 100000
-unit_prefix = "cappd"
+unit_prefix = "capgmd"
 
 [profiles.capturedet_qwen3]
 description = "10h Qwen3-1.7B greedy drift WITH raw-content capture (D20): process_only, back-to-back, repl-2 (mayhem pair); self-baselined; forces per-experiment review (R3)."
