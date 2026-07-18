@@ -598,8 +598,10 @@ unit_prefix = "o10ds"
 # The USER ask: run gpt-oss-20b overnight under BOTH a deterministic (greedy, temp 0)
 # and a seeded-sampling (temp 0.8) policy — the same det-vs-sampling contrast the
 # overnight10 mistral panels ran, on OpenAI's gpt-oss-20b (21B total / ~3.6B active
-# MoE, native MXFP4). Servable single-file GGUF = ggml-org/gpt-oss-20b-mxfp4.gguf,
-# 12.11 GB (the canonical llama.cpp conversion of the released MXFP4 weights).
+# MoE, native MXFP4). Servable single-file GGUF = ggml-org/gpt-oss-20b-GGUF /
+# gpt-oss-20b-MXFP4.gguf, 12.11 GB (the canonical llama.cpp conversion of the released
+# MXFP4 weights). NB: the HF filename is upper-case MXFP4 — coordinator submit-time sizing
+# matches it case-sensitively, so the store model_id stays lower-case gpt-oss-20b-mxfp4.
 # Fleet-fit (footprint x 1.2 serve overhead): 12.11 -> ~14.5 GB effective, which fits
 # ONLY the 22 GB Mac (wkr-Ls6…); the 5.44 GB usable Jetson mayhems cannot hold it -> both
 # legs run repl-1 process_only ON THE MAC (repl-2 on a single-capable-worker fleet strands
@@ -626,7 +628,7 @@ label = "vigiles-overnight10-gptoss"
 model_id = "gpt-oss-20b-mxfp4"
 model_version = "1.0"
 hf_repo = "ggml-org/gpt-oss-20b-GGUF"
-hf_filename = "gpt-oss-20b-mxfp4.gguf"
+hf_filename = "gpt-oss-20b-MXFP4.gguf"
 duration_hours = 10
 replication = 1
 research_goal = "10-hour seeded-sampling (temperature 0.8, top_p 0.9, pinned seed 0) run of OpenAI gpt-oss-20b (native MXFP4, single-file GGUF) on the unchanged Vigiles probe panel, process_only collection, back-to-back rounds, replication 1 on the Mac (its ~12.1 GB / ~14.5 GB-with-serve-overhead footprint fits only the 22 GB Mac worker) — the sampling half of the gpt-oss det-vs-sampling contrast, benchmarked against its own self-baseline (its first K rounds)."
@@ -661,7 +663,7 @@ label = "vigiles-overnight10det-gptoss"
 model_id = "gpt-oss-20b-mxfp4"
 model_version = "1.0"
 hf_repo = "ggml-org/gpt-oss-20b-GGUF"
-hf_filename = "gpt-oss-20b-mxfp4.gguf"
+hf_filename = "gpt-oss-20b-MXFP4.gguf"
 duration_hours = 10
 replication = 1
 research_goal = "10-hour DETERMINISTIC (greedy, temperature 0) run of OpenAI gpt-oss-20b (native MXFP4, single-file GGUF) on the unchanged Vigiles probe panel, process_only collection, back-to-back rounds, replication 1 on the Mac (its ~12.1 GB / ~14.5 GB-with-serve-overhead footprint fits only the 22 GB Mac worker) — the greedy half of the gpt-oss det-vs-sampling contrast, benchmarked against its own self-baseline (its first K rounds)."
@@ -718,7 +720,7 @@ label = "vigiles-capture-gptoss"
 model_id = "gpt-oss-20b-mxfp4"
 model_version = "1.0"
 hf_repo = "ggml-org/gpt-oss-20b-GGUF"
-hf_filename = "gpt-oss-20b-mxfp4.gguf"
+hf_filename = "gpt-oss-20b-MXFP4.gguf"
 duration_hours = 10
 replication = 1
 research_goal = "10-hour SEEDED SAMPLING (temperature 0.8, top_p 0.9, pinned seed 0) run of OpenAI gpt-oss-20b (native MXFP4, single-file GGUF) on the unchanged 12-probe Vigiles panel, process_only collection, back-to-back rounds, replication 1 on the Mac (its ~12.1 GB / ~14.5 GB-with-serve-overhead MXFP4 footprint fits only the 22 GB Mac worker) — self-baselined (drift from its own first-K rounds) WITH D20 raw-content capture for qualitative review. The raw model outputs are collected live from the R3 transit buffer during the run (never persisted on the coordinator)."
@@ -833,7 +835,7 @@ label = "vigiles-capturedet-gptoss"
 model_id = "gpt-oss-20b-mxfp4"
 model_version = "1.0"
 hf_repo = "ggml-org/gpt-oss-20b-GGUF"
-hf_filename = "gpt-oss-20b-mxfp4.gguf"
+hf_filename = "gpt-oss-20b-MXFP4.gguf"
 duration_hours = 10
 replication = 1
 research_goal = "10-hour DETERMINISTIC (greedy, temperature 0) run of OpenAI gpt-oss-20b (native MXFP4, single-file GGUF) on the unchanged 12-probe Vigiles panel, process_only collection, back-to-back rounds, replication 1 on the Mac (its ~12.1 GB / ~14.5 GB-with-serve-overhead MXFP4 footprint fits only the 22 GB Mac worker) — self-baselined (drift from its own first-K rounds) WITH D20 raw-content capture for qualitative review. The raw model outputs are collected live from the R3 transit buffer during the run (never persisted on the coordinator)."
