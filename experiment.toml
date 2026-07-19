@@ -838,6 +838,13 @@ temperature = 0.8
 top_p = 0.9
 seed = 0
 seed_policy = "per_round"                # the enabling change: seed = 0 + round each round
+[profiles.diversity_qwen3.benchmark]
+# §3.2 self-calibrated envelope is MANDATORY for a per-round seed-stream: the baseline
+# rounds are themselves varied draws, so the FIXED C7 envelope reads that natural spread
+# as huge "drift" (peak_eu ~10 = the diversity leaking into the drift axes). Calibrating
+# by the model's OWN baseline wobble makes a diverse-but-not-drifting run read ~1× (within
+# its own normal) while dispersion_eu carries the diversity magnitude. reference inherited.
+calibrate_envelope = true
 [profiles.diversity_qwen3.experiment]
 label = "vigiles-diversity-qwen3"
 model_id = "qwen3-1.7b-q4"
