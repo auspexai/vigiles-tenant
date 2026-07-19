@@ -822,6 +822,52 @@ max_rounds = 100000
 stable_rounds = 100000
 unit_prefix = "capqs"
 
+# ── Diversity / creativity-at-temperature (diversity_seed_stream_design.md) ──
+# The FIRST run that measures output SPREAD rather than drift. A per-round seed-STREAM
+# (seed_policy="per_round" → seed = 0 + round) makes each round a distinct, still-pinned
+# sample, so the model's OWN range at temperature 0.8 surfaces as within-condition
+# dispersion (dispersion_eu). repl-1 (single worker) isolates the sampler from cross-stack
+# C15 reproduction noise; process_only (sampling + repl-1, reducer dormant) satisfies the
+# coherence gate. Fixed 40-round count → 40 samples/probe for the pairwise spread estimate.
+[profiles.diversity_qwen3]
+description = "Output DIVERSITY probe: Qwen3-1.7B seeded sampling with a PER-ROUND seed-stream — measures the model's output SPREAD (dispersion_eu) at temp 0.8, not drift. repl-1 (single worker, isolates the sampler from cross-stack C15), process_only, fixed 40 rounds; self-baselined."
+[profiles.diversity_qwen3.reducer]
+kind = "builtin_process_only"
+[profiles.diversity_qwen3.determinism]
+temperature = 0.8
+top_p = 0.9
+seed = 0
+seed_policy = "per_round"                # the enabling change: seed = 0 + round each round
+[profiles.diversity_qwen3.experiment]
+label = "vigiles-diversity-qwen3"
+model_id = "qwen3-1.7b-q4"
+model_version = "1.0"
+hf_repo = "bartowski/Qwen_Qwen3-1.7B-GGUF"
+hf_filename = "Qwen_Qwen3-1.7B-Q4_K_M.gguf"
+duration_hours = 4
+replication = 1
+research_goal = "Characterize the OUTPUT DIVERSITY of Qwen3-1.7B at temperature 0.8 (top_p 0.9) — how wide the model's own output cloud is at this setting, measured as within-condition lexical dispersion (dispersion_eu, diversity_seed_stream_design.md §2) over a fixed 40-round panel run. A PER-ROUND seed-stream (seed_policy=per_round) draws a distinct, individually-pinned sample each round, so the sampler's genuine range surfaces instead of being pinned out by a constant seed; repl-1 (single worker) isolates that range from cross-stack C15 reproduction noise, and process_only makes every replica an independent observation. This is the diversity complement to the drift board — the first run whose headline is spread, not drift."
+prompt_characteristics = "The unchanged fixed 12-probe Vigiles panel under seeded sampling (temperature 0.8, top_p 0.9) against Qwen3-1.7B, re-drawn each round with a fresh pinned seed (base 0 + round). Only lexical summary features are analyzed (type_token_ratio, top_tokens, response_sha256); the dispersion of those features across the 40 draws is the diversity signal."
+[profiles.diversity_qwen3.feature_schema."model.id"]
+categories = ["qwen3-1.7b-q4"]
+[profiles.diversity_qwen3.pre_registration]
+hypothesis = "under seeded sampling (temperature 0.8, top_p 0.9) with a per-round seed-stream, Qwen3-1.7B produces a NON-ZERO within-condition lexical dispersion (dispersion_eu > 0) — a measurable output cloud whose width is the model's creative range at this temperature — while self-baseline drift (peak_eu) stays near 0 because the pooled distribution does not translate over the run. Null / negative control: a fixed-seed run of the same config yields dispersion_eu ~ 0 (the sampler is pinned)."
+analysis_method = "per probe_id, over the run's own 40 per-round draws, compute the pairwise envelope-unit spread of the lexical feature vector (type_token_ratio, top_tokens); the median pair per feature, max over features per probe, mean over probes is dispersion_eu (within_condition_dispersion). Reported alongside self-baseline drift (peak_eu/breadth), orthogonal to it. Single-worker repl-1, so the spread is the sampler's range, not cross-stack reproduction."
+features = ["lexical.type_token_ratio", "lexical.top_tokens", "response_sha256"]
+timescale = "intra_experiment_rounds"
+decision_rule = "descriptive: report dispersion_eu (output spread) at temperature 0.8; a fixed-seed control run of the same panel is the ~0 negative baseline"
+expected_result = "dispersion_eu > 0 (a real output cloud at temp 0.8), with self-baseline peak_eu near 0 (no translation over the run)"
+stopping_rule = "fixed 40-round count (max_rounds=40), declared up front — not data-peeking-dependent"
+comparison_keys = ["probe_id"]
+min_replication = 1
+[profiles.diversity_qwen3.driver]
+run_seconds = 0                          # fixed round count, not duration
+round_interval_seconds = 0
+max_rounds = 40                          # 40 distinct-seed draws per probe
+stable_rounds = 100000                   # never converge-on-stability (seed-stream never stabilises)
+baseline_rounds = 5                      # self-baseline split (drift ~0; dispersion is the signal)
+unit_prefix = "divqs"
+
 [profiles.capturedet_gptoss]
 description = "10h OpenAI gpt-oss-20b (native MXFP4, single-file GGUF) greedy drift WITH raw-content capture (D20): process_only, back-to-back, repl-1 (Mac-only); self-baselined; forces per-experiment review (R3)."
 [profiles.capturedet_gptoss.reducer]

@@ -232,17 +232,27 @@ def _env_seconds(name: str) -> float:
     return value if value > 0 else 0.0
 
 
-def _next_batch(_agg: Counter, rnd: int, prefix: str) -> list[Unit]:
-    """Re-run the full probe panel each round. The unit_id carries the round so
-    each round's probes are distinct work (the seed stays fixed — that's the
-    point: same input, watching for output drift)."""
+def _next_batch(
+    _agg: Counter, rnd: int, prefix: str, base_seed: int, seed_policy: str
+) -> list[Unit]:
+    """Re-run the full probe panel each round. The unit_id carries the round so each
+    round's probes are distinct work.
+
+    Seed policy (`inference_determinism.seed_policy`):
+    - "fixed" (default): a probe's seed is constant across rounds — same input, watching
+      for output DRIFT (D6 semantics, byte-for-byte unchanged).
+    - "per_round": a declared, deterministic seed-STREAM (`base_seed + round`) — each
+      round's effective seed is pinned + recorded, so the sampler's OWN range surfaces as
+      within-condition DISPERSION (diversity_seed_stream_design.md §3). Reproducibility
+      floor preserved: every draw is still individually seeded + reproducible."""
+    seed = base_seed + rnd if seed_policy == "per_round" else base_seed
     return [
         Unit(
             f"{prefix}-{p['probe_id']}-r{rnd}",
             {
                 "probe_id": p["probe_id"],
                 "messages": p["messages"],
-                "seed": SEED,
+                "seed": seed,
                 "num_predict": NUM_PREDICT,
             },
         )
@@ -251,7 +261,13 @@ def _next_batch(_agg: Counter, rnd: int, prefix: str) -> list[Unit]:
 
 
 def _make_next_batch(
-    run_seconds: float, interval: float, prefix: str, phase: dict[str, Any], baseline_rounds: int
+    run_seconds: float,
+    interval: float,
+    prefix: str,
+    phase: dict[str, Any],
+    baseline_rounds: int,
+    base_seed: int = SEED,
+    seed_policy: str = "fixed",
 ) -> Callable[[Counter, int], list[Unit] | None]:
     """Wrap the panel generator with the long-horizon knobs. This is where the
     driver hands the next round to the SDK loop, so it is where the duration
@@ -282,7 +298,7 @@ def _make_next_batch(
                 log.info(
                     "monitoring phase begins (round %d): measuring drift from the baseline", rnd
                 )
-        return _next_batch(agg, rnd, prefix)
+        return _next_batch(agg, rnd, prefix, base_seed, seed_policy)
 
     return next_batch
 
@@ -293,6 +309,7 @@ def _make_condition(
     stable_rounds: int = STABLE_ROUNDS,
     phase: dict[str, Any] | None = None,
     baseline_rounds: int = 0,
+    seed_stream: bool = False,
 ):
     """Converged once the SET of distinct (probe, observed-response) buckets has not
     grown for STABLE_ROUNDS consecutive rounds — every probe's OBSERVED-response set
@@ -376,7 +393,10 @@ def _make_condition(
             else:
                 drifted = []  # still inside the baseline window — just calibrating
                 where = ""
-            if drifted:
+            if drifted and not seed_stream:
+                # Under a per-round seed-STREAM every round is INTENDED to differ, so a
+                # new bucket is expected variation (the dispersion signal), not a drift
+                # event — don't cry wolf every round.
                 log.warning(
                     "DRIFT EVENT: %d (probe,response) bucket(s) %s: %s",
                     len(drifted),
@@ -391,6 +411,10 @@ def _make_condition(
         # Never converge before the baseline window is complete — spend the full
         # calibration phase even if the panel looks stable early.
         if in_baseline:
+            return False
+        # A per-round seed-stream never "stabilises" (each round is a fresh draw), so
+        # convergence-on-stability is meaningless — run to the fixed round count / duration.
+        if seed_stream:
             return False
         return not duration_mode and state["streak"] >= stable_rounds
 
@@ -425,6 +449,16 @@ def build(cfg) -> DriverSpec:
     _bl = _bl if _bl not in (None, "") else drv.get("baseline_rounds")
     baseline_rounds = BASELINE_ROUNDS if _bl is None else int(_bl)
     baseline_rounds = max(0, min(baseline_rounds, max_rounds))  # never exceed the run
+    # Generation policy (M1 inference_determinism): the base seed + the seed STREAM
+    # policy. "per_round" derives seed = base_seed + round so the sampler's own range
+    # shows up as dispersion (diversity_seed_stream_design.md). Absent/"fixed" ⇒ the
+    # constant SEED, D6 byte-for-byte. Env override for ad-hoc runs.
+    det = cfg.section("determinism") or {}
+    base_seed = int(det.get("seed", SEED))
+    seed_policy = os.environ.get("VIGILES_SEED_POLICY") or det.get("seed_policy") or "fixed"
+    seed_stream = seed_policy == "per_round"
+    if seed_stream:
+        log.info("seed-stream mode: per-round seed = %d + round (measuring dispersion)", base_seed)
     # Shared phase state read by BOTH closures: next_batch records the round it just
     # issued; the condition reads it to know baseline vs monitoring and freezes the
     # baseline reference set at the K-boundary.
@@ -435,8 +469,11 @@ def build(cfg) -> DriverSpec:
             stable_rounds=stable_rounds,
             phase=phase,
             baseline_rounds=baseline_rounds,
+            seed_stream=seed_stream,
         ),
-        next_batch=_make_next_batch(run_seconds, interval, prefix, phase, baseline_rounds),
+        next_batch=_make_next_batch(
+            run_seconds, interval, prefix, phase, baseline_rounds, base_seed, seed_policy
+        ),
         reduce=Counter(bucket=_bucket),
         # C7 Inc 3 tail: observe EVERY replica as a valid observation (a divergent or
         # empty-output worker is data, not a blocker); the round completes on the

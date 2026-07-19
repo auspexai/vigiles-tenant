@@ -239,10 +239,33 @@ def test_driver_resets_streak_on_drift():
 
 
 def test_next_batch_reruns_full_panel_with_fixed_seed():
-    units = drift_driver._next_batch(Counter(), 4, "d6")
+    units = drift_driver._next_batch(Counter(), 4, "d6", drift_driver.SEED, "fixed")
     assert len(units) == len(drift_driver.PROBES)
     assert {u.unit_id for u in units} == {f"d6-{p['probe_id']}-r4" for p in drift_driver.PROBES}
     assert all(u.payload["seed"] == drift_driver.SEED for u in units)
+
+
+def test_next_batch_per_round_seed_stream_varies_by_round():
+    # seed_policy="per_round" → a declared, deterministic seed-STREAM: each round's seed
+    # is base + round (still individually pinned), so the sampler's own range surfaces as
+    # dispersion instead of being pinned out (diversity_seed_stream_design.md §3).
+    r2 = drift_driver._next_batch(Counter(), 2, "divqs", 100, "per_round")
+    r5 = drift_driver._next_batch(Counter(), 5, "divqs", 100, "per_round")
+    assert all(u.payload["seed"] == 102 for u in r2)  # base 100 + round 2
+    assert all(u.payload["seed"] == 105 for u in r5)  # base 100 + round 5
+
+
+def test_build_wires_per_round_seed_policy_from_determinism(monkeypatch):
+    from auspexai_tenant.experiment_config import ExperimentConfig
+
+    monkeypatch.delenv("VIGILES_SEED_POLICY", raising=False)
+    cfg = ExperimentConfig(
+        driver={"baseline_rounds": 0, "unit_prefix": "divqs", "max_rounds": 40},
+        raw={"determinism": {"temperature": 0.8, "seed": 0, "seed_policy": "per_round"}},
+    )
+    spec = drift_driver.build(cfg)
+    r3 = spec.next_batch(Counter(bucket=drift_driver._bucket), 3)
+    assert all(u.payload["seed"] == 3 for u in r3)  # base 0 + round 3 → the stream is live
 
 
 def _cfg(**driver):
