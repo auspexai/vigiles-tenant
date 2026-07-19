@@ -858,12 +858,12 @@ prompt_characteristics = "The unchanged fixed 12-probe Vigiles panel under seede
 [profiles.diversity_qwen3.feature_schema."model.id"]
 categories = ["qwen3-1.7b-q4"]
 [profiles.diversity_qwen3.pre_registration]
-hypothesis = "under seeded sampling (temperature 0.8, top_p 0.9) with a per-round seed-stream, Qwen3-1.7B produces a NON-ZERO within-condition lexical dispersion (dispersion_eu > 0) — a measurable output cloud whose width is the model's creative range at this temperature — while self-baseline drift (peak_eu) stays near 0 because the pooled distribution does not translate over the run. Null / negative control: a fixed-seed run of the same config yields dispersion_eu ~ 0 (the sampler is pinned)."
+hypothesis = "under seeded sampling (temperature 0.8, top_p 0.9) with a per-round seed-stream, Qwen3-1.7B produces a NON-ZERO within-condition lexical dispersion (dispersion_eu > 0) — a measurable output cloud whose width is the model's creative range at this temperature — while self-calibrated self-baseline drift (peak_eu) stays near the 1x envelope floor (the pooled distribution does not translate over the run beyond the model's own baseline wobble). Null / negative control: a fixed-seed run of the same config yields dispersion_eu ~ 0 (the sampler is pinned)."
 analysis_method = "per probe_id, over the run's own 40 per-round draws, compute the pairwise envelope-unit spread of the lexical feature vector (type_token_ratio, top_tokens); the median pair per feature, max over features per probe, mean over probes is dispersion_eu (within_condition_dispersion). Reported alongside self-baseline drift (peak_eu/breadth), orthogonal to it. Single-worker repl-1, so the spread is the sampler's range, not cross-stack reproduction."
 features = ["lexical.type_token_ratio", "lexical.top_tokens", "response_sha256"]
 timescale = "intra_experiment_rounds"
 decision_rule = "descriptive: report dispersion_eu (output spread) at temperature 0.8; a fixed-seed control run of the same panel is the ~0 negative baseline"
-expected_result = "dispersion_eu > 0 (a real output cloud at temp 0.8), with self-baseline peak_eu near 0 (no translation over the run)"
+expected_result = "dispersion_eu > 0 (a real output cloud at temp 0.8), with self-calibrated peak_eu near 1x (no translation over the run)"
 stopping_rule = "fixed 40-round count (max_rounds=40), declared up front — not data-peeking-dependent"
 comparison_keys = ["probe_id"]
 min_replication = 1
@@ -875,12 +875,13 @@ stable_rounds = 100000                   # never converge-on-stability (seed-str
 baseline_rounds = 5                      # self-baseline split (drift ~0; dispersion is the signal)
 unit_prefix = "divqs"
 
-# ── Diversity cohort (3 models, per-round seed-stream) ──────────────────────
+# ── Diversity cohort (4 models with diversity_qwen3, per-round seed-stream) ──
 # Same design as diversity_qwen3: per_round seed-stream + calibrate_envelope (§3.2 —
 # MANDATORY for a per-round run, else the varied baseline reads as fake drift) +
 # process_only + repl-1 + fixed 40 rounds; one model per experiment (schema-enforced).
-# Fleet fit: mistral-7b + phi-3.5-mini serve only on the 24 GB Mac (routed there);
-# smollm2-1.7b fits the Jetsons. Distinct unit_prefixes so re-submits never collide.
+# Fleet fit: mistral-7b + phi-3.5-mini serve only on the 24 GB Mac (they serialize
+# there); qwen3-1.7b + smollm2-1.7b fit the Jetsons (run in parallel). Distinct
+# unit_prefixes so re-submits never collide.
 
 [profiles.diversity_mistral]
 description = "Output DIVERSITY probe: Mistral-7B-Instruct-v0.3 seeded sampling with a PER-ROUND seed-stream — measures output SPREAD (dispersion_eu) at temp 0.8, not drift. repl-1 (single worker, isolates the sampler from cross-stack C15), process_only, fixed 40 rounds; self-baselined, self-calibrated envelope."
