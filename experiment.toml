@@ -1006,6 +1006,214 @@ stable_rounds = 100000
 baseline_rounds = 5
 unit_prefix = "divsm"
 
+[profiles.diversity_llama]
+description = "Output DIVERSITY probe: Llama-3.2-1B-Instruct-Q8_0 seeded sampling with a PER-ROUND seed-stream — measures output SPREAD (dispersion_eu) at temp 0.8, not drift. repl-1 (single worker, isolates the sampler from cross-stack C15), process_only, fixed 40 rounds; self-baselined, self-calibrated envelope."
+[profiles.diversity_llama.reducer]
+kind = "builtin_process_only"
+[profiles.diversity_llama.determinism]
+temperature = 0.8
+top_p = 0.9
+seed = 0
+seed_policy = "per_round"
+[profiles.diversity_llama.benchmark]
+calibrate_envelope = true                # §3.2 MANDATORY for per_round (the varied baseline reads as fake drift under the fixed envelope)
+[profiles.diversity_llama.experiment]
+label = "vigiles-diversity-llama"
+model_id = "llama-3.2-1b-instruct-q8"
+model_version = "1.0"
+hf_repo = "bartowski/Llama-3.2-1B-Instruct-GGUF"
+hf_filename = "Llama-3.2-1B-Instruct-Q8_0.gguf"
+duration_hours = 4
+replication = 1
+research_goal = "Characterize the OUTPUT DIVERSITY of Llama-3.2-1B-Instruct (Q8_0) at temperature 0.8 (top_p 0.9) — how wide the model's own output cloud is at this setting, measured as within-condition lexical dispersion (dispersion_eu, diversity_seed_stream_design.md §2) over a fixed 40-round panel run. A PER-ROUND seed-stream (seed_policy=per_round) draws a distinct, individually-pinned sample each round so the sampler's genuine range surfaces; repl-1 (single worker; the 1.32 GB Q8_0 footprint fits the Jetsons) isolates it from cross-stack C15 reproduction noise; process_only makes every replica an independent observation. The §3.2 self-calibrated envelope keeps self-baseline drift readable (a diverse-but-stable run reads ~1x while dispersion carries the magnitude). Pairs with diversitydet_llama (its temp-0 greedy negative baseline)."
+prompt_characteristics = "The unchanged fixed 12-probe Vigiles panel under seeded sampling (temperature 0.8, top_p 0.9) against Llama-3.2-1B-Instruct (Q8_0), re-drawn each round with a fresh pinned seed (base 0 + round). Only lexical summary features are analyzed (type_token_ratio, top_tokens, response_sha256); the dispersion of those features across the 40 draws is the diversity signal."
+[profiles.diversity_llama.feature_schema."model.id"]
+categories = ["llama-3.2-1b-instruct-q8"]
+[profiles.diversity_llama.pre_registration]
+hypothesis = "under seeded sampling (temperature 0.8, top_p 0.9) with a per-round seed-stream, Llama-3.2-1B-Instruct produces a NON-ZERO within-condition lexical dispersion (dispersion_eu > 0) — a measurable output cloud whose width is the model's creative range at this temperature — while self-calibrated self-baseline drift (peak_eu) stays near the 1x envelope floor (the pooled distribution does not translate over the run beyond the model's own baseline wobble). Null / negative control: a fixed-seed run of the same config yields dispersion_eu ~ 0."
+analysis_method = "per probe_id, over the run's own 40 per-round draws, compute the pairwise envelope-unit spread of the lexical feature vector (type_token_ratio, top_tokens); the median pair per feature, max over features per probe, mean over probes is dispersion_eu (within_condition_dispersion). Reported alongside self-calibrated self-baseline drift (peak_eu/breadth), orthogonal to it. Single-worker repl-1, so the spread is the sampler's range, not cross-stack reproduction."
+features = ["lexical.type_token_ratio", "lexical.top_tokens", "response_sha256"]
+timescale = "intra_experiment_rounds"
+decision_rule = "descriptive: report dispersion_eu (output spread) at temperature 0.8; a fixed-seed control run of the same panel is the ~0 negative baseline"
+expected_result = "dispersion_eu > 0 (a real output cloud at temp 0.8), with self-calibrated peak_eu near 1x (no translation over the run)"
+stopping_rule = "fixed 40-round count (max_rounds=40), declared up front — not data-peeking-dependent"
+comparison_keys = ["probe_id"]
+min_replication = 1
+[profiles.diversity_llama.driver]
+run_seconds = 0
+round_interval_seconds = 0
+max_rounds = 40
+stable_rounds = 100000
+baseline_rounds = 5
+unit_prefix = "divll"
+
+# ── Diversity cohort — DETERMINISTIC counterparts (greedy, temp 0) ──
+# The temp-0 greedy counterpart to the diversity_* seed-stream legs above: adds
+# Llama-3.2-1B-Instruct-Q8_0 (new to this cohort) and re-runs the three models
+# already captured at temp 0.8 (mistral-7b-v0.3 / phi-3.5-mini / smollm2-1.7b) at
+# temperature 0. Same panel / 4h budget / fixed 40-round volume / process_only /
+# repl-1 as each model's diversity_* sibling, so a diversitydet_<m> run is the
+# apples-to-apples GREEDY control for diversity_<m>. Two things differ from the
+# sampling sibling and NOTHING else:
+#   (1) [determinism] = temperature 0.0 ONLY — the per-round seed-stream is dropped
+#       (seed_policy=per_round requires temperature > 0; diversity_seed_stream_design.md
+#       §"per_round requires temperature > 0"), and the SDK rejects top_p/seed at temp 0.
+#   (2) NO [benchmark] override → inherit the base fixed C7 envelope. calibrate_envelope
+#       is MANDATORY only for a per-round run (its varied baseline reads as fake drift
+#       under the fixed envelope); a greedy run has no such varied baseline.
+# Role: the deterministic negative baseline for the diversity board — at greedy the
+# sampler is off, so dispersion_eu collapses to ~0 (the ~0 control the diversity
+# pre-registration names) while self-baseline drift characterizes the serving stack's
+# own greedy stability. Fleet fit mirrors the sampling cohort: llama-3.2-1b (1.32 GB
+# Q8_0) + smollm2-1.7b fit the Jetsons; mistral-7b + phi-3.5-mini serve Mac-only.
+# Distinct labels + unit_prefixes (dvd*) so nothing collides with the diversity journals.
+# The [determinism] block is kept (temp 0.0) → the manifest still declares a generation
+# policy (v0.2.56+ workers; the fleet is well past that).
+
+[profiles.diversitydet_llama]
+description = "DETERMINISTIC (greedy, temp 0) counterpart to the diversity cohort: Llama-3.2-1B-Instruct-Q8_0 on the fixed Vigiles panel — the negative-baseline sibling (dispersion_eu ~ 0). repl-1 (single worker), process_only, fixed 40 rounds; self-baselined, fixed C7 envelope. NEW model in this cohort (no temp-0.8 sibling)."
+[profiles.diversitydet_llama.reducer]
+kind = "builtin_process_only"
+[profiles.diversitydet_llama.determinism]
+temperature = 0.0                        # greedy (temp 0); NO sampling knobs — the SDK rejects top_p/seed at temp 0, and per_round requires temp > 0
+[profiles.diversitydet_llama.experiment]
+label = "vigiles-diversitydet-llama"
+model_id = "llama-3.2-1b-instruct-q8"
+model_version = "1.0"
+hf_repo = "bartowski/Llama-3.2-1B-Instruct-GGUF"
+hf_filename = "Llama-3.2-1B-Instruct-Q8_0.gguf"
+duration_hours = 4
+replication = 1
+research_goal = "DETERMINISTIC (greedy, temperature 0) run of Llama-3.2-1B-Instruct (Q8_0) on the unchanged fixed 12-probe Vigiles panel over a fixed 40-round window, process_only collection, back-to-back rounds, replication 1 on a single worker (its 1.32 GB Q8_0 footprint fits the Jetsons) — the greedy leg NEW to the diversity cohort (no temp-0.8 sibling yet). At greedy the sampler is off, so within-condition lexical dispersion (dispersion_eu) collapses to ~0 — the negative baseline against which the temp-0.8 diversity magnitudes are read — while self-baseline drift (drift from its own first-K rounds) characterizes the serving stack's greedy stability. Benchmarked against the fixed C7 envelope (§3.1), not the self-calibrated envelope the per-round legs require."
+prompt_characteristics = "The unchanged fixed 12-probe Vigiles panel at temperature 0 (greedy, no sampler) against Llama-3.2-1B-Instruct (Q8_0), re-run each round with no seed variation — deterministic generation. Only lexical summary features are analyzed (type_token_ratio, top_tokens, response_sha256); their near-zero dispersion across the 40 rounds is the negative-control signal."
+[profiles.diversitydet_llama.feature_schema."model.id"]
+categories = ["llama-3.2-1b-instruct-q8"]
+[profiles.diversitydet_llama.pre_registration]
+hypothesis = "at temperature 0 (greedy decoding), each fixed Vigiles probe's output is byte-reproducible within a worker across the fixed 40-round window (weights + greedy policy pinned), so within-condition lexical dispersion (dispersion_eu) is ~0 — the negative control for the temp-0.8 diversity measurement; a post-stability exit of a probe's lexical signature from its self-baseline C7 envelope is a serving-stack drift event. Null = dispersion_eu ~ 0 and within-envelope stability throughout."
+analysis_method = "per probe_id, over the run's own 40 greedy rounds, compute the pairwise envelope-unit spread of the lexical feature vector (type_token_ratio, top_tokens) → dispersion_eu, expected ~0 (the sampler is off); reported alongside self-baseline drift (peak_eu/breadth) against this run's OWN first-K baseline rounds under the fixed C7 envelope. Single-worker repl-1, matched to diversity_* so it is the greedy control, not a cross-stack consensus."
+features = ["lexical.type_token_ratio", "lexical.top_tokens", "response_sha256"]
+timescale = "intra_experiment_rounds"
+decision_rule = "descriptive: report dispersion_eu (expected ~0 at greedy — the negative baseline for the diversity board) and self-baseline drift under the fixed C7 envelope"
+expected_result = "dispersion_eu ~ 0 (greedy — sampler off), self-baseline peak_eu within the C7 envelope (byte-reproducible over the window)"
+stopping_rule = "fixed 40-round count (max_rounds=40), declared up front — not data-peeking-dependent"
+comparison_keys = ["probe_id"]
+min_replication = 1
+[profiles.diversitydet_llama.driver]
+run_seconds = 0                          # fixed round count, not duration
+round_interval_seconds = 0
+max_rounds = 40
+stable_rounds = 100000                   # never converge-on-stability (fixed 40-round window, matched to diversity_*)
+baseline_rounds = 5                      # self-baseline split
+unit_prefix = "dvdl"
+
+[profiles.diversitydet_mistral]
+description = "DETERMINISTIC (greedy, temp 0) counterpart to diversity_mistral: Mistral-7B-Instruct-v0.3 on the fixed Vigiles panel — the negative-baseline sibling (dispersion_eu ~ 0). repl-1 (single worker, Mac-only), process_only, fixed 40 rounds; self-baselined, fixed C7 envelope."
+[profiles.diversitydet_mistral.reducer]
+kind = "builtin_process_only"
+[profiles.diversitydet_mistral.determinism]
+temperature = 0.0                        # greedy (temp 0); NO sampling knobs — the SDK rejects top_p/seed at temp 0, and per_round requires temp > 0
+[profiles.diversitydet_mistral.experiment]
+label = "vigiles-diversitydet-mistral"
+model_id = "mistral-7b-instruct-v0.3-q4"
+model_version = "1.0"
+hf_repo = "MaziyarPanahi/Mistral-7B-Instruct-v0.3-GGUF"
+hf_filename = "Mistral-7B-Instruct-v0.3.Q4_K_M.gguf"
+duration_hours = 4
+replication = 1
+research_goal = "DETERMINISTIC (greedy, temperature 0) run of Mistral-7B-Instruct-v0.3 on the unchanged fixed 12-probe Vigiles panel over a fixed 40-round window, process_only collection, back-to-back rounds, replication 1 on the Mac (its 6.3 GB serve footprint fits only the 24 GB Mac) — the greedy counterpart to diversity_mistral. At greedy the sampler is off, so within-condition lexical dispersion (dispersion_eu) collapses to ~0 — the negative baseline against which its temp-0.8 diversity magnitude is read — while self-baseline drift characterizes the serving stack's greedy stability. Benchmarked against the fixed C7 envelope (§3.1)."
+prompt_characteristics = "The unchanged fixed 12-probe Vigiles panel at temperature 0 (greedy, no sampler) against Mistral-7B-Instruct-v0.3, re-run each round with no seed variation — deterministic generation. Only lexical summary features are analyzed (type_token_ratio, top_tokens, response_sha256); their near-zero dispersion across the 40 rounds is the negative-control signal."
+[profiles.diversitydet_mistral.feature_schema."model.id"]
+categories = ["mistral-7b-instruct-v0.3-q4"]
+[profiles.diversitydet_mistral.pre_registration]
+hypothesis = "at temperature 0 (greedy decoding), each fixed Vigiles probe's output is byte-reproducible within a worker across the fixed 40-round window (weights + greedy policy pinned), so within-condition lexical dispersion (dispersion_eu) is ~0 — the negative control for diversity_mistral's temp-0.8 measurement; a post-stability exit of a probe's lexical signature from its self-baseline C7 envelope is a serving-stack drift event. Null = dispersion_eu ~ 0 and within-envelope stability throughout."
+analysis_method = "per probe_id, over the run's own 40 greedy rounds, compute the pairwise envelope-unit spread of the lexical feature vector (type_token_ratio, top_tokens) → dispersion_eu, expected ~0 (the sampler is off); reported alongside self-baseline drift (peak_eu/breadth) against this run's OWN first-K baseline rounds under the fixed C7 envelope. Single-worker repl-1 (Mac-only: the 6.3 GB serve footprint fits only the 24 GB Mac), matched to diversity_mistral so it is the greedy control."
+features = ["lexical.type_token_ratio", "lexical.top_tokens", "response_sha256"]
+timescale = "intra_experiment_rounds"
+decision_rule = "descriptive: report dispersion_eu (expected ~0 at greedy — the negative baseline for the diversity board) and self-baseline drift under the fixed C7 envelope"
+expected_result = "dispersion_eu ~ 0 (greedy — sampler off), self-baseline peak_eu within the C7 envelope (byte-reproducible over the window)"
+stopping_rule = "fixed 40-round count (max_rounds=40), declared up front — not data-peeking-dependent"
+comparison_keys = ["probe_id"]
+min_replication = 1
+[profiles.diversitydet_mistral.driver]
+run_seconds = 0
+round_interval_seconds = 0
+max_rounds = 40
+stable_rounds = 100000
+baseline_rounds = 5
+unit_prefix = "dvdm"
+
+[profiles.diversitydet_phi35]
+description = "DETERMINISTIC (greedy, temp 0) counterpart to diversity_phi35: Phi-3.5-mini-instruct on the fixed Vigiles panel — the negative-baseline sibling (dispersion_eu ~ 0). repl-1 (single worker, Mac-only), process_only, fixed 40 rounds; self-baselined, fixed C7 envelope."
+[profiles.diversitydet_phi35.reducer]
+kind = "builtin_process_only"
+[profiles.diversitydet_phi35.determinism]
+temperature = 0.0                        # greedy (temp 0); NO sampling knobs — the SDK rejects top_p/seed at temp 0, and per_round requires temp > 0
+[profiles.diversitydet_phi35.experiment]
+label = "vigiles-diversitydet-phi35"
+model_id = "phi-3.5-mini-instruct-q4"
+model_version = "1.0"
+hf_repo = "bartowski/Phi-3.5-mini-instruct-GGUF"
+hf_filename = "Phi-3.5-mini-instruct-Q4_K_M.gguf"
+duration_hours = 4
+replication = 1
+research_goal = "DETERMINISTIC (greedy, temperature 0) run of Phi-3.5-mini-instruct on the unchanged fixed 12-probe Vigiles panel over a fixed 40-round window, process_only collection, back-to-back rounds, replication 1 on the Mac (Mac-only under the serve-overhead gate) — the greedy counterpart to diversity_phi35. At greedy the sampler is off, so within-condition lexical dispersion (dispersion_eu) collapses to ~0 — the negative baseline against which its temp-0.8 diversity magnitude is read — while self-baseline drift characterizes the serving stack's greedy stability. Benchmarked against the fixed C7 envelope (§3.1)."
+prompt_characteristics = "The unchanged fixed 12-probe Vigiles panel at temperature 0 (greedy, no sampler) against Phi-3.5-mini-instruct, re-run each round with no seed variation — deterministic generation. Only lexical summary features are analyzed (type_token_ratio, top_tokens, response_sha256); their near-zero dispersion across the 40 rounds is the negative-control signal."
+[profiles.diversitydet_phi35.feature_schema."model.id"]
+categories = ["phi-3.5-mini-instruct-q4"]
+[profiles.diversitydet_phi35.pre_registration]
+hypothesis = "at temperature 0 (greedy decoding), each fixed Vigiles probe's output is byte-reproducible within a worker across the fixed 40-round window (weights + greedy policy pinned), so within-condition lexical dispersion (dispersion_eu) is ~0 — the negative control for diversity_phi35's temp-0.8 measurement; a post-stability exit of a probe's lexical signature from its self-baseline C7 envelope is a serving-stack drift event. Null = dispersion_eu ~ 0 and within-envelope stability throughout."
+analysis_method = "per probe_id, over the run's own 40 greedy rounds, compute the pairwise envelope-unit spread of the lexical feature vector (type_token_ratio, top_tokens) → dispersion_eu, expected ~0 (the sampler is off); reported alongside self-baseline drift (peak_eu/breadth) against this run's OWN first-K baseline rounds under the fixed C7 envelope. Single-worker repl-1 (Mac-only under the serve-overhead gate), matched to diversity_phi35 so it is the greedy control."
+features = ["lexical.type_token_ratio", "lexical.top_tokens", "response_sha256"]
+timescale = "intra_experiment_rounds"
+decision_rule = "descriptive: report dispersion_eu (expected ~0 at greedy — the negative baseline for the diversity board) and self-baseline drift under the fixed C7 envelope"
+expected_result = "dispersion_eu ~ 0 (greedy — sampler off), self-baseline peak_eu within the C7 envelope (byte-reproducible over the window)"
+stopping_rule = "fixed 40-round count (max_rounds=40), declared up front — not data-peeking-dependent"
+comparison_keys = ["probe_id"]
+min_replication = 1
+[profiles.diversitydet_phi35.driver]
+run_seconds = 0
+round_interval_seconds = 0
+max_rounds = 40
+stable_rounds = 100000
+baseline_rounds = 5
+unit_prefix = "dvdp"
+
+[profiles.diversitydet_smollm2]
+description = "DETERMINISTIC (greedy, temp 0) counterpart to diversity_smollm2: SmolLM2-1.7B-Instruct on the fixed Vigiles panel — the negative-baseline sibling (dispersion_eu ~ 0). repl-1 (single worker; fits the Jetsons), process_only, fixed 40 rounds; self-baselined, fixed C7 envelope."
+[profiles.diversitydet_smollm2.reducer]
+kind = "builtin_process_only"
+[profiles.diversitydet_smollm2.determinism]
+temperature = 0.0                        # greedy (temp 0); NO sampling knobs — the SDK rejects top_p/seed at temp 0, and per_round requires temp > 0
+[profiles.diversitydet_smollm2.experiment]
+label = "vigiles-diversitydet-smollm2"
+model_id = "smollm2-1.7b-instruct-q4"
+model_version = "1.0"
+hf_repo = "bartowski/SmolLM2-1.7B-Instruct-GGUF"
+hf_filename = "SmolLM2-1.7B-Instruct-Q4_K_M.gguf"
+duration_hours = 4
+replication = 1
+research_goal = "DETERMINISTIC (greedy, temperature 0) run of SmolLM2-1.7B-Instruct on the unchanged fixed 12-probe Vigiles panel over a fixed 40-round window, process_only collection, back-to-back rounds, replication 1 on a single worker (its ~1 GB footprint also fits the Jetsons) — the greedy counterpart to diversity_smollm2. At greedy the sampler is off, so within-condition lexical dispersion (dispersion_eu) collapses to ~0 — the negative baseline against which its temp-0.8 diversity magnitude is read — while self-baseline drift characterizes the serving stack's greedy stability. Benchmarked against the fixed C7 envelope (§3.1)."
+prompt_characteristics = "The unchanged fixed 12-probe Vigiles panel at temperature 0 (greedy, no sampler) against SmolLM2-1.7B-Instruct, re-run each round with no seed variation — deterministic generation. Only lexical summary features are analyzed (type_token_ratio, top_tokens, response_sha256); their near-zero dispersion across the 40 rounds is the negative-control signal."
+[profiles.diversitydet_smollm2.feature_schema."model.id"]
+categories = ["smollm2-1.7b-instruct-q4"]
+[profiles.diversitydet_smollm2.pre_registration]
+hypothesis = "at temperature 0 (greedy decoding), each fixed Vigiles probe's output is byte-reproducible within a worker across the fixed 40-round window (weights + greedy policy pinned), so within-condition lexical dispersion (dispersion_eu) is ~0 — the negative control for diversity_smollm2's temp-0.8 measurement; a post-stability exit of a probe's lexical signature from its self-baseline C7 envelope is a serving-stack drift event. Null = dispersion_eu ~ 0 and within-envelope stability throughout."
+analysis_method = "per probe_id, over the run's own 40 greedy rounds, compute the pairwise envelope-unit spread of the lexical feature vector (type_token_ratio, top_tokens) → dispersion_eu, expected ~0 (the sampler is off); reported alongside self-baseline drift (peak_eu/breadth) against this run's OWN first-K baseline rounds under the fixed C7 envelope. Single-worker repl-1 (the ~1 GB footprint also fits the Jetsons), matched to diversity_smollm2 so it is the greedy control."
+features = ["lexical.type_token_ratio", "lexical.top_tokens", "response_sha256"]
+timescale = "intra_experiment_rounds"
+decision_rule = "descriptive: report dispersion_eu (expected ~0 at greedy — the negative baseline for the diversity board) and self-baseline drift under the fixed C7 envelope"
+expected_result = "dispersion_eu ~ 0 (greedy — sampler off), self-baseline peak_eu within the C7 envelope (byte-reproducible over the window)"
+stopping_rule = "fixed 40-round count (max_rounds=40), declared up front — not data-peeking-dependent"
+comparison_keys = ["probe_id"]
+min_replication = 1
+[profiles.diversitydet_smollm2.driver]
+run_seconds = 0
+round_interval_seconds = 0
+max_rounds = 40
+stable_rounds = 100000
+baseline_rounds = 5
+unit_prefix = "dvds"
+
 [profiles.capturedet_gptoss]
 description = "10h OpenAI gpt-oss-20b (native MXFP4, single-file GGUF) greedy drift WITH raw-content capture (D20): process_only, back-to-back, repl-1 (Mac-only); self-baselined; forces per-experiment review (R3)."
 [profiles.capturedet_gptoss.reducer]
