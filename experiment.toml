@@ -185,7 +185,7 @@ dir = "~/.local/share/auspexai-tenant/runs"
 # reference = "" — which, being a scalar, cleanly overrides the inherited "self".
 [benchmark]
 reference = "self"                     # self_baseline mode (alias); the reference is this run's own first-K baseline rounds
-calibrate_envelope = false             # §3.2 (self-calibrated envelope, tenant-sdk >= 0.6.56): when true, 1 EU = THIS model's own baseline wobble (floored at the C7 envelope), the fuller Sentinel method. Default false → the fixed C7 envelope (§3.1); flip to true to compare once the first self-baseline runs validate the baseline dispersion.
+calibrate_envelope = true              # §3.2 self-calibrated envelope (tenant-sdk >= 0.6.56) — ONE ruler for EVERY run: 1 EU = THIS run's own baseline wobble (floored at the C7 envelope), so drift always reads "beyond its own normal". Floored at C7, so a byte-stable greedy baseline reduces to the fixed floor (a no-op) and greedy + per-round land on the SAME scale instead of two. (Was false = fixed C7; unified 2026-07-22 so the board isn't two rulers.)
 
 [profiles.starter]
 # The declawed on-ramp face: benign fixed probe panel, converge-on-stability,
@@ -1058,9 +1058,9 @@ unit_prefix = "divll"
 #   (1) [determinism] = temperature 0.0 ONLY — the per-round seed-stream is dropped
 #       (seed_policy=per_round requires temperature > 0; diversity_seed_stream_design.md
 #       §"per_round requires temperature > 0"), and the SDK rejects top_p/seed at temp 0.
-#   (2) NO [benchmark] override → inherit the base fixed C7 envelope. calibrate_envelope
-#       is MANDATORY only for a per-round run (its varied baseline reads as fake drift
-#       under the fixed envelope); a greedy run has no such varied baseline.
+#   (2) NO [benchmark] override → inherit the base self-calibrated envelope (calibrate_envelope
+#       = true) like every run. Floored at C7, so a byte-stable greedy baseline reduces to the
+#       fixed floor (a no-op) — ALL runs share ONE ruler: drift beyond each run's own normal.
 # Role: the deterministic negative baseline for the diversity board — at greedy the
 # sampler is off, so dispersion_eu collapses to ~0 (the ~0 control the diversity
 # pre-registration names) while self-baseline drift characterizes the serving stack's
