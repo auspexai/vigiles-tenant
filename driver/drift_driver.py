@@ -43,7 +43,7 @@ Long-horizon knobs (env; ALL default to D6 behavior when unset):
   VIGILES_MAX_ROUNDS             overrides the MAX_ROUNDS client guard (default
                                  50). RAISE this for duration runs — e.g. 8 h at
                                  a 300 s cadence is ~96 rounds. The coordinator
-                                 experiment's max_units (rounds × panel size)
+                                 experiment's max_units (rounds x panel size)
                                  stays the hard backstop.
   VIGILES_BASELINE_ROUNDS        overrides `[driver].baseline_rounds` (K, default
                                  BASELINE_ROUNDS=5). The run spends its first K
@@ -327,7 +327,7 @@ def _make_condition(
     round completes on the coordinator's all-units-terminal signal, not a fold count).
     So the streak ticks per call. This REPLACES the old consensus fold-count parity
     gating (`total % len(PROBES)`), which no longer holds: a raw round folds a VARIABLE
-    number of observations (replicas × probes, fewer on capacity-collapse), so the
+    number of observations (replicas x probes, fewer on capacity-collapse), so the
     boundary can't be derived from the fold count.
 
     Bucket counts only accumulate (a running Counter; buckets are never removed), so

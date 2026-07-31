@@ -16,7 +16,7 @@ license = { text = "Apache-2.0" }
 dev = [
     "auspexai-tenant @ git+https://github.com/auspexai/tenant-sdk.git",
     "pytest>=8",
-    "ruff>=0.6",
+    "ruff==0.15.20",
 ]
 
 # This is a TENANT repo, not an importable library — pkg/ + driver/ are staged
@@ -25,8 +25,30 @@ dev = [
 [tool.setuptools]
 py-modules = []
 
+# Ruff config mirrors the sibling repos (platform / worker / tenant-sdk) so a
+# contributor sees one lint contract across AuspexAI. `ruff` is pinned EXACTLY
+# (dev deps above) for the same reason those repos pin it: an unpinned linter
+# turns an upstream release into a red CI on an untouched tree — which is
+# exactly what `ruff>=0.6` did here between 2026-07-22 and 2026-07-31.
 [tool.ruff]
 line-length = 100
+target-version = "py311"
+src = ["pkg", "driver", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "B", "UP", "RUF"]
+ignore = ["E501"]  # line length is enforced by the formatter, not the linter
+
+[tool.ruff.lint.per-file-ignores]
+# pkg/ is STAGED ARTIFACT code: it runs under the worker sandbox's system
+# Python with zero runtime deps, so it cannot assume the 3.11+ stdlib that
+# `target-version` licenses elsewhere. tenant-sdk carries the identical
+# exemption for its own copy of lite.py.
+"pkg/lite.py" = ["UP017"]      # datetime.UTC is 3.11+; timezone.utc runs anywhere
+"pkg/executor.py" = ["UP017"]
+# The executor/driver imports must follow the sys.path inserts that make them
+# importable at all, so the E402 noqa directives in these tests are load-bearing.
+"tests/**" = ["B011", "N802"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
