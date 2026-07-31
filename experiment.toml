@@ -1324,3 +1324,81 @@ round_interval_seconds = 0
 max_rounds = 100000
 stable_rounds = 100000
 unit_prefix = "capqd"
+
+[profiles.crossconfig_gemma]
+# The CONTROLLED fleet-composition comparison (the confound-killer for the
+# 2026-07 capturedet observation). capturedet_gemma/qwen3 showed nonzero byte
+# divergence while every single-worker greedy run read exactly 0.0 — but model
+# identity was perfectly confounded with fleet composition: the diverging runs
+# happened to include the Mac, the clean ones did not. No model had ever been
+# run in BOTH compositions, so "model or fleet?" was not separable.
+#
+# This profile fixes the model and varies nothing else: replication = N_configs
+# = 3, so EVERY unit executes on EVERY worker and all three comparison arms fall
+# out of ONE run, sliced offline by worker pair:
+#   arm 1  within-worker, across rounds  — is a single machine self-consistent?
+#   arm 2  within-band, across workers   — do two IDENTICAL machines agree?
+#   arm 3  cross-band, across workers    — do different platforms agree?
+# Arm 1 is the "single machine looks perfectly clean" control; arm 3 is the
+# claim under test. process_only keeps every replica as an independent
+# observation (no consensus collapse), raw capture makes divergence attributable
+# to a worker AND inspectable as text.
+#
+# FLEET AT AUTHORING (2026-07-30, live heartbeats): band A = mayhem-1
+# (wkr-Yl78n7…) + mayhem-2 (wkr-TS235y…), both linux/aarch64 Ollama 0.32.0 —
+# now VERSION-IDENTICAL, so arm 2 is a genuinely clean control (it was 0.17.7 vs
+# 0.18.2 during C7 phase-0). Band B = the Mac (wkr-Ls6OHRBP…), darwin/arm64
+# Ollama 0.30.11.
+#
+# KNOWN, DELIBERATE LIMITATION: cross-band differs in platform (darwin/arm64 vs
+# linux/aarch64) AND serving version (0.30.11 vs 0.32.0) at once. Three configs
+# cannot separate them. The remedy is a second run with the Mac on 0.32.0 —
+# cross-band then becomes platform-only, and the delta between the two runs
+# isolates the version effect. Declared here so the first run is not read as
+# more than it is.
+description = "Controlled fleet-composition comparison: Gemma-3-1B-it greedy on the unchanged 12-probe panel, repl-3 (every unit on every config), process_only + raw capture; within-worker / within-band / cross-band byte agreement stratified offline. Fixed volume, 40 rounds."
+
+[profiles.crossconfig_gemma.benchmark]
+reference = ""  # spread measurement analyzed offline — scores against nothing
+
+[profiles.crossconfig_gemma.reducer]
+kind = "builtin_process_only"          # every replica kept as an independent observation; consensus must NOT collapse the disagreement we are here to measure
+
+[profiles.crossconfig_gemma.determinism]
+temperature = 0.0                      # greedy; NO sampling knobs — the SDK rejects top_p/seed at temp 0
+
+[profiles.crossconfig_gemma.capture]
+raw = true                             # D20 (R3): divergence must be attributable to a worker and readable as text, not just a hash mismatch
+
+[profiles.crossconfig_gemma.experiment]
+label = "vigiles-crossconfig-gemma"
+model_id = "gemma-3-1b-it-q4"
+model_version = "1.0"
+hf_repo = "unsloth/gemma-3-1b-it-GGUF"
+hf_filename = "gemma-3-1b-it-Q4_K_M.gguf"
+duration_hours = 2                     # budget headroom; the run is round-limited (see [driver]), not duration-limited
+replication = 3                        # target = N_configs: every unit on every worker, so each unit yields all three arms
+research_goal = "Determine whether byte-level reproducibility of greedy (temperature 0) inference depends on FLEET COMPOSITION rather than on model identity, by holding the model fixed (Gemma-3-1B-it, the C7 reference model) and running the unchanged 12-probe Vigiles panel at replication = N_configs = 3 so every work unit executes on every fleet config. Analysis is offline over the raw per-replica payloads: per probe_id, pairwise response_sha256 agreement stratified into (1) within-worker across rounds, (2) within-band across the two linux/aarch64 Ollama 0.32.0 workers, (3) cross-band between each linux/aarch64 worker and the darwin/arm64 Ollama 0.30.11 worker. Fixed volume — 40 rounds x 12 probes = 480 units (~1440 executions); no early convergence; stops at max_rounds. This run exists to remove the model-vs-fleet confound in the 2026-07 capturedet observation, where every single-worker greedy run read 0.0 byte divergence and only the multi-config runs did not."
+prompt_characteristics = "The unchanged fixed 12-probe Vigiles panel at temperature 0 (greedy, no sampler) against Gemma-3-1B-it — identical inputs to capturedet_gemma; only the replication, volume, and analysis intent differ."
+
+[profiles.crossconfig_gemma.feature_schema."model.id"]
+categories = ["gemma-3-1b-it-q4"]
+
+[profiles.crossconfig_gemma.pre_registration]
+hypothesis = "Greedy byte-reproducibility is a property of the fleet composition, not of the model. Directional predictions, declared before the run: (H1) WITHIN-WORKER across all 40 rounds, every probe is byte-identical on every worker — a single machine is perfectly self-consistent. (H2) WITHIN-BAND, the two linux/aarch64 Ollama 0.32.0 workers are byte-identical on every probe — pairwise response_sha256 agreement 1.0, matching the C7 phase-0 F1 within-band floor of 0.000. (H3) CROSS-BAND, the darwin/arm64 Ollama 0.30.11 worker disagrees with the linux/aarch64 workers on a PROPER SUBSET of probes — >0 and <12 — and the disagreeing set is stable across all 40 rounds (a fixed per-band response, not round-to-round noise). Prior-informed prediction of that subset from capturedet_gemma (exp-VgdPZbeL): p-refusal, p-list, p-fact, p-code, p-greeting diverge; p-arithmetic, p-classify, p-constrained, p-enumerate, p-format-json, p-reasoning, p-translate do not. NULL = cross-band disagreement is indistinguishable from within-band (both ~0), which would refute the fleet-composition explanation and send the capturedet observation back to a model-level or temporal cause."
+analysis_method = "Offline over the raw per-replica payloads (never the in-manifest envelope, which is not an analysis input here). For each probe_id, form all worker-pair x round comparisons of response_sha256 and stratify by pair class: within-worker (same worker, different rounds), within-band (mayhem-1 x mayhem-2), cross-band (each mayhem x Mac). Report exact agreement rate per (probe_id, pair class) plus, for every disagreeing cell, the captured raw text of both sides so the divergence is characterized qualitatively (wording/formatting vs different answer) and not only counted. Byte disagreement is reported ALONGSIDE the declared lexical predicate (type_token_ratio, top_tokens) so 'bytes moved' and 'the envelope was exceeded' stay distinguishable — capturedet_gemma showed the former with peak_eu 0.0, i.e. divergence that the declared predicate correctly tolerated."
+features = ["lexical.type_token_ratio", "lexical.top_tokens", "response_sha256"]
+timescale = "intra_experiment_rounds"
+decision_rule = "H2 holds IFF within-band exact agreement = 1.0 on all 12 probes. H3 holds IFF at least one and at most eleven probes show cross-band exact agreement < 1.0 AND each such probe's disagreement is present in every round (stable, not intermittent). Fleet composition is established as the explanation IFF H1 and H2 hold while H3 holds — single-machine and identical-machine comparisons clean, cross-platform comparison structurally dirty."
+expected_result = "within-worker and within-band agreement 1.0 on all 12 probes; cross-band agreement 1.0 on roughly seven probes and <1.0 on roughly five, stable across rounds, with the divergences being wording/formatting differences that stay inside the declared lexical envelope"
+stopping_rule = "fixed 40-round count (max_rounds=40), declared up front — not data-peeking-dependent"
+comparison_keys = ["probe_id"]
+min_replication = 3                    # FLOOR = 3, deliberately above the C14 default of 2: a unit that lands on only two workers cannot yield a complete three-way comparison. Trades a small stranding risk on a 3-worker fleet for arm-complete units.
+
+[profiles.crossconfig_gemma.driver]
+run_seconds = 0                        # NOT duration mode — fixed round count below
+round_interval_seconds = 0             # back-to-back; this measures cross-config spread, not temporal drift
+max_rounds = 40                        # THE volume knob: 40 rounds x 12 probes = 480 units x 3 replicas = 1440 executions
+stable_rounds = 100000                 # deliberately unreachable — a fixed-volume run must not converge early
+baseline_rounds = 0                    # not a self-baseline drift study; spread is measured offline between workers
+unit_prefix = "xcfg"
