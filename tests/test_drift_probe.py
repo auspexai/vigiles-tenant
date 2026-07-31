@@ -16,14 +16,14 @@ import sys
 import threading
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "pkg"))
 sys.path.insert(0, str(ROOT / "driver"))
 
-import executor  # noqa: E402  (vendored pkg/executor.py)
-import drift_driver  # noqa: E402
 from auspexai_tenant import Counter  # noqa: E402
+
+import drift_driver  # noqa: E402
+import executor  # noqa: E402  (vendored pkg/executor.py)
 
 
 class _FakeBroker:
