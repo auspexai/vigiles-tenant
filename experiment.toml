@@ -1402,3 +1402,85 @@ max_rounds = 40                        # THE volume knob: 40 rounds x 12 probes 
 stable_rounds = 100000                 # deliberately unreachable — a fixed-volume run must not converge early
 baseline_rounds = 0                    # not a self-baseline drift study; spread is measured offline between workers
 unit_prefix = "xcfg"
+
+[profiles.crossconfig_gemma_neutral]
+# THE NEUTRAL-CHAIN REPLICATION of crossconfig_gemma (exp-o5Z5XxzE).
+#
+# Why it exists: exp-o5Z5XxzE was described as "temp 0 greedy" and was not.
+# The worker sent only temperature/seed/num_predict, so Ollama's own defaults
+# governed the rest of the sampler chain — top_k 40, top_p 0.9, repeat_penalty
+# 1.1 over a 64-token window — on all three machines, unrecorded. And since
+# llama.cpp #9897 a temperature of 0 does not short-circuit to argmax at all:
+# the full chain runs and the most probable token ENTERING the temperature step
+# is taken, which equals raw argmax only under a neutral chain. `top_k = 1` is
+# what pins argmax. (Surfaced by an r/LocalLLaMA commenter; see
+# inference_determinism_scoping_memo.md §8.)
+#
+# Manifest v0.7 now emits the complete chain at declared-or-neutral values, so
+# the fix is already the default — but this profile DECLARES every knob
+# explicitly anyway. A run whose manifest states the chain is checkable by a
+# reader; a run that relies on a default is only checkable by reading our
+# source at the right commit.
+#
+# ⚠ ONE VARIABLE. Everything else is byte-identical to crossconfig_gemma: same
+# model + digest, same 12-probe panel, same 40 rounds, same replication 3 and
+# floor 3, same process_only + raw capture, and CRUCIALLY the same fleet — the
+# Mac stays on Ollama 0.30.11. Putting the Mac on 0.32.0 is the NEXT run, not
+# this one; changing the chain and the runtime version together would make a
+# delta unattributable to either.
+#
+# The interesting property of this design is that BOTH outcomes are publishable:
+# if the cross-platform divergence survives a genuinely neutral chain, the
+# original finding is strengthened and the sampler stack is excluded as the
+# cause. If it disappears, the finding becomes "the serving provider's DEFAULT
+# sampler stack is what makes temp-0 evaluation hardware-dependent" — arguably
+# the more useful result, since that is the configuration nearly everyone runs.
+description = "Neutral-chain replication of crossconfig_gemma: identical model, panel, volume and fleet, with the FULL sampler chain declared explicitly (top_k 1 = argmax, repeat_penalty 1.0, repeat_last_n 0). Isolates whether the cross-platform byte divergence in exp-o5Z5XxzE survives once the provider's default sampler stack is removed."
+
+[profiles.crossconfig_gemma_neutral.benchmark]
+reference = ""  # spread measured offline; scores against nothing
+
+[profiles.crossconfig_gemma_neutral.reducer]
+kind = "builtin_process_only"          # every replica an independent observation — consensus must not collapse the disagreement under test
+
+[profiles.crossconfig_gemma_neutral.determinism]
+temperature = 0.0                      # greedy…
+top_k = 1                              # …and THIS is what actually pins argmax (llama.cpp #9897). Declarable at temp 0 as of manifest v0.7.
+repeat_penalty = 1.0                   # neutral. The provider default is 1.1 — the one chain member with FEEDBACK (it rewrites logits from tokens already emitted), so under the old behavior one flipped token moved the penalty window and divergence compounded instead of staying local. The leading amplifier candidate for exp-o5Z5XxzE.
+repeat_last_n = 0                      # neutral; provider default is a 64-token window
+
+[profiles.crossconfig_gemma_neutral.capture]
+raw = true                             # divergence must stay attributable to a worker and readable as text
+
+[profiles.crossconfig_gemma_neutral.experiment]
+label = "vigiles-crossconfig-gemma-neutral"
+model_id = "gemma-3-1b-it-q4"
+model_version = "1.0"
+hf_repo = "unsloth/gemma-3-1b-it-GGUF"
+hf_filename = "gemma-3-1b-it-Q4_K_M.gguf"
+duration_hours = 6                     # budget headroom only; the run is round-limited. Set from the measured 4h30m of exp-o5Z5XxzE rather than the stale 2 that profile still declares.
+replication = 3                        # target = N_configs: every unit on every worker
+research_goal = "Determine whether the cross-platform greedy byte divergence measured in exp-o5Z5XxzE survives once the serving provider's DEFAULT sampler chain is removed. That run declared temperature 0 and was reported as greedy decoding, but the worker transmitted only temperature/seed/num_predict, so Ollama's defaults (top_k 40, top_p 0.9, repeat_penalty 1.1 over a 64-token window) governed the remainder of the chain on all three machines; and since llama.cpp #9897 temperature 0 does not select argmax on its own. This run holds the model, the 12-probe panel, the volume, the replication and the FLEET all constant and changes exactly one thing: the chain is declared in full and neutral, with top_k = 1 pinning argmax and the penalties disabled. Analysis is the same offline stratification over raw per-replica payloads — within-worker across rounds, within-band across the two linux/aarch64 Ollama 0.32.0 workers, cross-band against the darwin/arm64 Ollama 0.30.11 worker — so the two runs are directly comparable cell by cell."
+prompt_characteristics = "The unchanged fixed 12-probe Vigiles panel against Gemma-3-1B-it — byte-identical inputs to crossconfig_gemma. Only the declared sampler chain differs."
+
+[profiles.crossconfig_gemma_neutral.feature_schema."model.id"]
+categories = ["gemma-3-1b-it-q4"]
+
+[profiles.crossconfig_gemma_neutral.pre_registration]
+hypothesis = "The cross-platform divergence in exp-o5Z5XxzE is NOT an artifact of the provider's default sampler chain, and survives a neutral chain. Declared before the run: (H1) p-list still disagrees cross-band on every round — the `Red, blue, yellow` / `Red, Yellow, Blue` ordering flip is a near-tied-logit resolution, not a sampler effect, so cross-band agreement on p-list stays 0/40. (H2) p-refusal likewise stays 0/40 cross-band. (H3) WITHIN-BAND agreement RISES toward 1.0 — the 98.8% in exp-o5Z5XxzE was entirely p-fact intermittently emitting a trailing newline on different rounds on each box (10/12/14 vs 1/11/13), the only genuinely nondeterministic-looking cell in that dataset, and repeat_penalty over a 64-token window is the most plausible mechanism for it; remove the penalty and it should resolve. (H4) The linux-only round-0 cold start PERSISTS unchanged on both boxes and remains absent on the Mac — penalty state is empty on a first call either way, so the chain cannot explain it; CUDA-graph capture beginning after the first eval is the standing hypothesis, which this run does not test. NULL = cross-band agreement rises to ~1.0, which would REFUTE the headline reading of exp-o5Z5XxzE and relocate the finding to the provider's default sampler stack."
+analysis_method = "Identical to crossconfig_gemma so the two runs compare cell by cell: offline over the raw per-replica payloads, per probe_id form all worker-pair x round comparisons of response_sha256 and stratify into within-worker, within-band and cross-band. Report exact agreement per (probe_id, pair class), and for every disagreeing cell the captured raw text of both sides so divergence is characterized and not merely counted. Byte disagreement is reported alongside the declared lexical predicate so 'bytes moved' and 'the envelope was exceeded' stay distinguishable. The primary comparison is the DELTA against exp-o5Z5XxzE per cell, not the absolute rates."
+features = ["lexical.type_token_ratio", "lexical.top_tokens", "response_sha256"]
+timescale = "intra_experiment_rounds"
+decision_rule = "The chain is EXONERATED as the cause IFF cross-band agreement stays materially below 1.0 with p-list and p-refusal still at 0/40 — the original finding then stands and strengthens. The chain is IMPLICATED IFF cross-band agreement rises to ~1.0, in which case the reportable finding becomes that the provider's default sampler stack is what makes temp-0 evaluation hardware-dependent. H3 is judged separately: within-band agreement 1.0 on all 12 probes confirms the penalty window explained the p-fact intermittency; unchanged 98.8% leaves it unexplained and open."
+expected_result = "cross-band agreement close to the 75.2% of exp-o5Z5XxzE with p-list and p-refusal at 0/40; within-band rising from 98.8% toward 1.0; the linux round-0 cold start unchanged on both boxes and still absent on the Mac"
+stopping_rule = "fixed 40-round count (max_rounds=40), declared up front — matches exp-o5Z5XxzE exactly so volume is not a variable"
+comparison_keys = ["probe_id"]
+min_replication = 3                    # FLOOR = 3: a unit landing on only two workers cannot yield a complete three-way comparison
+
+[profiles.crossconfig_gemma_neutral.driver]
+run_seconds = 0                        # round-limited, not duration-limited
+round_interval_seconds = 0             # back-to-back; this measures cross-config spread, not temporal drift
+max_rounds = 40                        # 40 rounds x 12 probes = 480 units x 3 replicas = 1440 executions — identical volume to exp-o5Z5XxzE
+stable_rounds = 100000                 # unreachable: a fixed-volume run must not converge early
+baseline_rounds = 0                    # spread is measured offline between workers
+unit_prefix = "xcgn"
