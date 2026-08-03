@@ -16,7 +16,7 @@ license = { text = "Apache-2.0" }
 dev = [
     "auspexai-tenant @ git+https://github.com/auspexai/tenant-sdk.git",
     "pytest>=8",
-    "ruff==0.16.0",
+    "ruff==0.16.1",
 ]
 
 # This is a TENANT repo, not an importable library — pkg/ + driver/ are staged
